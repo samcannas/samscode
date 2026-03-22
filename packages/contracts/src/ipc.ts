@@ -46,6 +46,14 @@ import type {
   OrchestrationReadModel,
 } from "./orchestration";
 import { EditorId } from "./editor";
+import type {
+  SpeechToTextDeleteModelInput,
+  SpeechToTextDownloadModelInput,
+  SpeechToTextSelectModelInput,
+  SpeechToTextState,
+  SpeechToTextTranscribeWavInput,
+  SpeechToTextTranscriptionResult,
+} from "./speechToText";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -159,6 +167,16 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+  };
+  speechToText: {
+    getState: () => Promise<SpeechToTextState>;
+    downloadModel: (input: SpeechToTextDownloadModelInput) => Promise<SpeechToTextState>;
+    deleteModel: (input: SpeechToTextDeleteModelInput) => Promise<SpeechToTextState>;
+    selectModel: (input: SpeechToTextSelectModelInput) => Promise<SpeechToTextState>;
+    transcribeWav: (
+      input: SpeechToTextTranscribeWavInput,
+    ) => Promise<SpeechToTextTranscriptionResult>;
+    onStateChanged: (callback: (state: SpeechToTextState) => void) => () => void;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

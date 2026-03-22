@@ -346,6 +346,60 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("forwards speech-to-text methods to the websocket transport", async () => {
+    requestMock
+      .mockResolvedValueOnce({
+        available: true,
+        runtimeStatus: "ready",
+        selectedModelId: null,
+        installedModels: [],
+        catalog: [],
+        activeDownload: null,
+        errorMessage: null,
+      })
+      .mockResolvedValueOnce({
+        text: "hello world",
+        modelId: "ggml-base.en.bin",
+        elapsedMs: 42,
+      });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.speechToText.getState();
+    await api.speechToText.transcribeWav({
+      wavBase64: "UklGRg==",
+      fileName: "speech.wav",
+    });
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.speechToTextGetState);
+    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.speechToTextTranscribeWav, {
+      wavBase64: "UklGRg==",
+      fileName: "speech.wav",
+    });
+  });
+
+  it("disables request timeouts for speech-to-text model downloads", async () => {
+    requestMock.mockResolvedValue({
+      available: true,
+      runtimeStatus: "ready",
+      selectedModelId: null,
+      installedModels: [],
+      catalog: [],
+      activeDownload: null,
+      errorMessage: null,
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.speechToText.downloadModel({ modelId: "ggml-base.en.bin" });
+
+    expect(requestMock).toHaveBeenCalledWith(
+      WS_METHODS.speechToTextDownloadModel,
+      { modelId: "ggml-base.en.bin" },
+      { timeoutMs: 0 },
+    );
+  });
+
   it("forwards full-thread diff requests to the orchestration websocket method", async () => {
     requestMock.mockResolvedValue({ diff: "patch" });
     const { createWsNativeApi } = await import("./wsNativeApi");

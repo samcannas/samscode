@@ -34,6 +34,7 @@ import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
 import { GitServiceLive } from "./git/Layers/GitService";
 import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
 import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
+import { SpeechToTextLive } from "./speechToText/layer";
 
 export function makeServerProviderLayer(): Layer.Layer<
   ProviderService,
@@ -127,5 +128,6 @@ export function makeServerRuntimeServicesLayer() {
     gitManagerLayer,
     terminalLayer,
     KeybindingsLive,
+    SpeechToTextLive,
   ).pipe(Layer.provideMerge(NodeServices.layer));
 }

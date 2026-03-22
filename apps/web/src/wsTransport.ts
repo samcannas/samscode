@@ -14,7 +14,11 @@ type PushListener<C extends WsPushChannel> = (message: WsPushMessage<C>) => void
 interface PendingRequest {
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | null;
+}
+
+interface RequestOptions {
+  readonly timeoutMs?: number;
 }
 
 interface SubscribeOptions {
@@ -72,7 +76,11 @@ export class WsTransport {
     this.connect();
   }
 
-  async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  async request<T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: RequestOptions,
+  ): Promise<T> {
     if (typeof method !== "string" || method.length === 0) {
       throw new Error("Request method is required");
     }
@@ -83,10 +91,14 @@ export class WsTransport {
     const encoded = JSON.stringify(message);
 
     return new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Request timed out: ${method}`));
-      }, REQUEST_TIMEOUT_MS);
+      const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+      const timeout =
+        timeoutMs > 0
+          ? setTimeout(() => {
+              this.pending.delete(id);
+              reject(new Error(`Request timed out: ${method}`));
+            }, timeoutMs)
+          : null;
 
       this.pending.set(id, {
         resolve: resolve as (result: unknown) => void,
@@ -146,7 +158,9 @@ export class WsTransport {
       this.reconnectTimer = null;
     }
     for (const pending of this.pending.values()) {
-      clearTimeout(pending.timeout);
+      if (pending.timeout !== null) {
+        clearTimeout(pending.timeout);
+      }
       pending.reject(new Error("Transport disposed"));
     }
     this.pending.clear();
@@ -224,7 +238,9 @@ export class WsTransport {
       return;
     }
 
-    clearTimeout(pending.timeout);
+    if (pending.timeout !== null) {
+      clearTimeout(pending.timeout);
+    }
     this.pending.delete(message.id);
 
     if (message.error) {

@@ -46,6 +46,12 @@ it.effect("parses keybinding rules", () =>
       command: "chat.newLocal",
     });
     assert.strictEqual(parsedLocal.command, "chat.newLocal");
+
+    const parsedSpeech = yield* decode(KeybindingRule, {
+      key: "ctrl+.",
+      command: "speech.recordHold",
+    });
+    assert.strictEqual(parsedSpeech.command, "speech.recordHold");
   }),
 );
 

@@ -3,6 +3,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   type ContextMenuItem,
   type NativeApi,
+  type SpeechToTextState,
   ServerConfigUpdatedPayload,
   WS_CHANNELS,
   WS_METHODS,
@@ -15,6 +16,7 @@ import { WsTransport } from "./wsTransport";
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
 const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
+const speechToTextStateListeners = new Set<(payload: SpeechToTextState) => void>();
 
 /**
  * Subscribe to the server welcome message. If a welcome was already received
@@ -62,6 +64,26 @@ export function onServerConfigUpdated(
   };
 }
 
+export function onSpeechToTextStateChanged(
+  listener: (payload: SpeechToTextState) => void,
+): () => void {
+  speechToTextStateListeners.add(listener);
+
+  const latestState =
+    instance?.transport.getLatestPush(WS_CHANNELS.speechToTextUpdated)?.data ?? null;
+  if (latestState) {
+    try {
+      listener(latestState);
+    } catch {
+      // Swallow listener errors
+    }
+  }
+
+  return () => {
+    speechToTextStateListeners.delete(listener);
+  };
+}
+
 export function createWsNativeApi(): NativeApi {
   if (instance) return instance.api;
 
@@ -80,6 +102,16 @@ export function createWsNativeApi(): NativeApi {
   transport.subscribe(WS_CHANNELS.serverConfigUpdated, (message) => {
     const payload = message.data;
     for (const listener of serverConfigUpdatedListeners) {
+      try {
+        listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+  transport.subscribe(WS_CHANNELS.speechToTextUpdated, (message) => {
+    const payload = message.data;
+    for (const listener of speechToTextStateListeners) {
       try {
         listener(payload);
       } catch {
@@ -160,6 +192,16 @@ export function createWsNativeApi(): NativeApi {
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
+    },
+    speechToText: {
+      getState: () => transport.request(WS_METHODS.speechToTextGetState),
+      downloadModel: (input) =>
+        transport.request(WS_METHODS.speechToTextDownloadModel, input, { timeoutMs: 0 }),
+      deleteModel: (input) => transport.request(WS_METHODS.speechToTextDeleteModel, input),
+      selectModel: (input) => transport.request(WS_METHODS.speechToTextSelectModel, input),
+      transcribeWav: (input) => transport.request(WS_METHODS.speechToTextTranscribeWav, input),
+      onStateChanged: (callback) =>
+        transport.subscribe(WS_CHANNELS.speechToTextUpdated, (message) => callback(message.data)),
     },
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),

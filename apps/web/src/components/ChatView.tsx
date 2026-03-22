@@ -93,6 +93,9 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   ListTodoIcon,
+  LoaderCircleIcon,
+  MicIcon,
+  MicOffIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -170,6 +173,7 @@ import {
   SendPhase,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { type SpeechToTextComposerSnapshot, useSpeechToText } from "~/speechToText/useSpeechToText";
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
@@ -206,6 +210,31 @@ const extendReplacementRangeForTrailingSpace = (
   }
   return text[rangeEnd] === " " ? rangeEnd + 1 : rangeEnd;
 };
+
+function isWordCharacter(value: string | undefined): boolean {
+  return value !== undefined && /[A-Za-z0-9]/.test(value);
+}
+
+function formatSpeechTranscriptForInsertion(
+  text: string,
+  insertionOffset: number,
+  transcript: string,
+): string {
+  const trimmedTranscript = transcript.trim();
+  if (trimmedTranscript.length === 0) {
+    return "";
+  }
+
+  const previousChar = insertionOffset > 0 ? text[insertionOffset - 1] : undefined;
+  const nextChar = text[insertionOffset];
+  const leadingSpace =
+    isWordCharacter(previousChar) && isWordCharacter(trimmedTranscript[0]) ? " " : "";
+  const trailingSpace =
+    isWordCharacter(trimmedTranscript[trimmedTranscript.length - 1]) && isWordCharacter(nextChar)
+      ? " "
+      : "";
+  return `${leadingSpace}${trimmedTranscript}${trailingSpace}`;
+}
 
 const syncTerminalContextsByIds = (
   contexts: ReadonlyArray<TerminalContextDraft>,
@@ -1117,6 +1146,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "diff.toggle"),
     [keybindings],
   );
+  const speechRecordShortcutLabel = useMemo(
+    () => shortcutLabelForCommand(keybindings, "speech.recordHold"),
+    [keybindings],
+  );
   const onToggleDiff = useCallback(() => {
     void navigate({
       to: "/$threadId",
@@ -1172,6 +1205,67 @@ export default function ChatView({ threadId }: ChatViewProps) {
       focusComposer();
     });
   }, [focusComposer]);
+  const readSpeechToTextComposerSnapshot = useCallback((): SpeechToTextComposerSnapshot | null => {
+    if (!activeThreadId) {
+      return null;
+    }
+    return (
+      composerEditorRef.current?.readSnapshot() ?? {
+        value: promptRef.current,
+        cursor: composerCursor,
+        expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
+        terminalContextIds: composerTerminalContextsRef.current.map((context) => context.id),
+      }
+    );
+  }, [activeThreadId, composerCursor]);
+  const insertSpeechTranscript = useCallback(
+    (transcript: string, snapshot: SpeechToTextComposerSnapshot) => {
+      const insertionText = formatSpeechTranscriptForInsertion(
+        snapshot.value,
+        snapshot.expandedCursor,
+        transcript,
+      );
+      if (insertionText.length === 0) {
+        throw new Error("No speech was detected in the recording.");
+      }
+      const nextPrompt = replaceTextRange(
+        snapshot.value,
+        snapshot.expandedCursor,
+        snapshot.expandedCursor,
+        insertionText,
+      );
+      const nextCollapsedCursor = collapseExpandedComposerCursor(
+        nextPrompt.text,
+        nextPrompt.cursor,
+      );
+      promptRef.current = nextPrompt.text;
+      setPrompt(nextPrompt.text);
+      setComposerCursor(nextCollapsedCursor);
+      setComposerTrigger(detectComposerTrigger(nextPrompt.text, nextPrompt.cursor));
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCollapsedCursor);
+      });
+    },
+    [setPrompt],
+  );
+  const isModalOpen = useCallback(
+    () => pullRequestDialogState !== null || document.querySelector('[aria-modal="true"]') !== null,
+    [pullRequestDialogState],
+  );
+  const {
+    serverState: speechToTextServerState,
+    buttonState: speechToTextButtonState,
+    errorMessage: speechToTextErrorMessage,
+    onMicButtonClick: onSpeechToTextMicButtonClick,
+    onShortcutKeyDown: onSpeechToTextShortcutKeyDown,
+    onShortcutKeyUp: onSpeechToTextShortcutKeyUp,
+  } = useSpeechToText({
+    canUseComposer: Boolean(activeThreadId),
+    readComposerSnapshot: readSpeechToTextComposerSnapshot,
+    insertTranscript: insertSpeechTranscript,
+    isTerminalFocused,
+    isModalOpen,
+  });
   const addTerminalContextToDraft = useCallback(
     (selection: TerminalContextSelection) => {
       if (!activeThread) {
@@ -2097,6 +2191,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (command === "speech.recordHold") {
+        if (event.repeat) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        void onSpeechToTextShortcutKeyDown();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -2119,8 +2223,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
     splitTerminal,
     keybindings,
     onToggleDiff,
+    onSpeechToTextShortcutKeyDown,
     toggleTerminalVisibility,
   ]);
+
+  useEffect(() => {
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (!activeThreadId || event.defaultPrevented) return;
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: isTerminalFocused(),
+          terminalOpen: Boolean(terminalState.terminalOpen),
+        },
+      });
+      if (command !== "speech.recordHold") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void onSpeechToTextShortcutKeyUp();
+    };
+    window.addEventListener("keyup", handler);
+    return () => window.removeEventListener("keyup", handler);
+  }, [activeThreadId, keybindings, onSpeechToTextShortcutKeyUp, terminalState.terminalOpen]);
 
   const addComposerImages = (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
@@ -3727,6 +3852,59 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         <span className="text-muted-foreground/70 text-xs">
                           Preparing worktree...
                         </span>
+                      ) : null}
+                      {phase !== "running" && pendingUserInputs.length === 0 ? (
+                        <button
+                          type="button"
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                          }}
+                          className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-150 sm:h-8 sm:w-8",
+                            speechToTextButtonState === "recording"
+                              ? "border-rose-500 bg-rose-500 text-white hover:bg-rose-500/90"
+                              : speechToTextButtonState === "transcribing"
+                                ? "border-amber-500/50 bg-amber-500/15 text-amber-600"
+                                : speechToTextButtonState === "error"
+                                  ? "border-rose-500/40 bg-rose-500/10 text-rose-500 hover:bg-rose-500/15"
+                                  : speechToTextButtonState === "unavailable"
+                                    ? "border-border bg-background text-muted-foreground/60 hover:bg-accent"
+                                    : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+                          )}
+                          aria-label={
+                            speechToTextButtonState === "recording"
+                              ? "Stop speech-to-text recording"
+                              : speechToTextButtonState === "transcribing"
+                                ? "Speech-to-text is transcribing"
+                                : speechToTextButtonState === "unavailable"
+                                  ? "Open speech-to-text settings"
+                                  : "Start speech-to-text recording"
+                          }
+                          title={
+                            speechToTextButtonState === "error"
+                              ? (speechToTextErrorMessage ?? "Speech-to-text error")
+                              : speechToTextButtonState === "unavailable"
+                                ? speechToTextServerState?.available === false
+                                  ? "Speech-to-text is unavailable on this server"
+                                  : `Set up speech-to-text in Settings${speechRecordShortcutLabel ? ` (${speechRecordShortcutLabel})` : ""}`
+                                : `Speech-to-text${speechRecordShortcutLabel ? ` (${speechRecordShortcutLabel})` : ""}`
+                          }
+                          onClick={() => {
+                            if (speechToTextButtonState === "unavailable") {
+                              void navigate({ to: "/settings" });
+                              return;
+                            }
+                            void onSpeechToTextMicButtonClick();
+                          }}
+                        >
+                          {speechToTextButtonState === "transcribing" ? (
+                            <LoaderCircleIcon className="size-4 animate-spin" />
+                          ) : speechToTextButtonState === "unavailable" ? (
+                            <MicOffIcon className="size-4" />
+                          ) : (
+                            <MicIcon className="size-4" />
+                          )}
+                        </button>
                       ) : null}
                       {activePendingProgress ? (
                         <div className="flex items-center gap-2">

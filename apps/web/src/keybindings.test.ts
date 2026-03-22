@@ -97,6 +97,18 @@ const DEFAULT_BINDINGS = compile([
     command: "diff.toggle",
     whenAst: whenNot(whenIdentifier("terminalFocus")),
   },
+  {
+    shortcut: {
+      key: ".",
+      metaKey: false,
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      modKey: false,
+    },
+    command: "speech.recordHold",
+    whenAst: whenNot(whenIdentifier("terminalFocus")),
+  },
   { shortcut: modShortcut("o", { shiftKey: true }), command: "chat.new" },
   { shortcut: modShortcut("n", { shiftKey: true }), command: "chat.newLocal" },
   { shortcut: modShortcut("o"), command: "editor.openFavorite" },
@@ -294,6 +306,22 @@ describe("chat/editor shortcuts", () => {
     assert.isFalse(
       isDiffToggleShortcut(event({ key: "d", metaKey: true }), DEFAULT_BINDINGS, {
         platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+  });
+
+  it("matches speech.recordHold shortcut", () => {
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: ".", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+      "speech.recordHold",
+    );
+    assert.isNull(
+      resolveShortcutCommand(event({ key: ".", ctrlKey: true }), DEFAULT_BINDINGS, {
+        platform: "Linux",
         context: { terminalFocus: true },
       }),
     );

@@ -73,6 +73,20 @@ it.effect("accepts git.preparePullRequestThread requests", () =>
   }),
 );
 
+it.effect("accepts speech-to-text transcription requests", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWebSocketRequest({
+      id: "req-stt-1",
+      body: {
+        _tag: WS_METHODS.speechToTextTranscribeWav,
+        wavBase64: "UklGRg==",
+        fileName: "speech.wav",
+      },
+    });
+    assert.strictEqual(parsed.body._tag, WS_METHODS.speechToTextTranscribeWav);
+  }),
+);
+
 it.effect("accepts typed websocket push envelopes with sequence", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeWsResponse({
@@ -110,5 +124,39 @@ it.effect("rejects push envelopes when channel payload does not match the channe
     );
 
     assert.strictEqual(result._tag, "Failure");
+  }),
+);
+
+it.effect("accepts speech-to-text push envelopes", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWsResponse({
+      type: "push",
+      sequence: 3,
+      channel: WS_CHANNELS.speechToTextUpdated,
+      data: {
+        available: true,
+        runtimeStatus: "ready",
+        selectedModelId: "ggml-base.en.bin",
+        installedModels: [
+          {
+            id: "ggml-base.en.bin",
+            fileName: "ggml-base.en.bin",
+            name: "Base English",
+            sizeBytes: 155189248,
+            installedAt: "2026-03-22T00:00:00.000Z",
+            selected: true,
+          },
+        ],
+        catalog: [],
+        activeDownload: null,
+        errorMessage: null,
+      },
+    });
+
+    if (!("type" in parsed) || parsed.type !== "push") {
+      assert.fail("expected websocket response to decode as a push envelope");
+    }
+
+    assert.strictEqual(parsed.channel, WS_CHANNELS.speechToTextUpdated);
   }),
 );

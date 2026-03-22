@@ -74,6 +74,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "mod+o", command: "editor.openFavorite" },
+  { key: "ctrl+.", command: "speech.recordHold", when: "!terminalFocus" },
 ];
 
 function normalizeKeyToken(token: string): string {

@@ -49,6 +49,7 @@ import { createLogger } from "./logger";
 import { GitManager } from "./git/Services/GitManager.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { Keybindings } from "./keybindings";
+import { SpeechToText } from "./speechToText/service";
 import { searchWorkspaceEntries } from "./workspaceEntries";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
@@ -215,6 +216,7 @@ export type ServerRuntimeServices =
   | GitCore
   | TerminalManager
   | Keybindings
+  | SpeechToText
   | Open;
 
 export class ServerLifecycleError extends Schema.TaggedErrorClass<ServerLifecycleError>()(
@@ -251,6 +253,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const gitManager = yield* GitManager;
   const terminalManager = yield* TerminalManager;
   const keybindingsManager = yield* Keybindings;
+  const speechToText = yield* SpeechToText;
   const providerHealth = yield* ProviderHealth;
   const git = yield* GitCore;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -293,6 +296,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     ),
   );
   yield* readiness.markKeybindingsReady;
+  yield* speechToText.start.pipe(
+    Effect.mapError(
+      (cause) => new ServerLifecycleError({ operation: "speechToTextRuntimeStart", cause }),
+    ),
+  );
 
   const normalizeDispatchCommand = Effect.fnUntraced(function* (input: {
     readonly command: ClientOrchestrationCommand;
@@ -616,6 +624,10 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     }),
   ).pipe(Effect.forkIn(subscriptionsScope));
 
+  yield* Stream.runForEach(speechToText.streamChanges, (event) =>
+    pushBus.publishAll(WS_CHANNELS.speechToTextUpdated, event),
+  ).pipe(Effect.forkIn(subscriptionsScope));
+
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
   yield* readiness.markOrchestrationSubscriptionsReady;
 
@@ -878,6 +890,29 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const body = stripRequestTag(request.body);
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
         return { keybindings: keybindingsConfig, issues: [] };
+      }
+
+      case WS_METHODS.speechToTextGetState:
+        return yield* speechToText.getState;
+
+      case WS_METHODS.speechToTextDownloadModel: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.downloadModel(body);
+      }
+
+      case WS_METHODS.speechToTextDeleteModel: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.deleteModel(body);
+      }
+
+      case WS_METHODS.speechToTextSelectModel: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.selectModel(body);
+      }
+
+      case WS_METHODS.speechToTextTranscribeWav: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.transcribeWav(body);
       }
 
       default: {

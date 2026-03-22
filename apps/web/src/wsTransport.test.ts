@@ -85,6 +85,35 @@ afterEach(() => {
 });
 
 describe("WsTransport", () => {
+  it("allows requests with disabled timeouts to wait indefinitely", async () => {
+    vi.useFakeTimers();
+    const transport = new WsTransport("ws://localhost:3020");
+    const socket = getSocket();
+    socket.open();
+
+    const requestPromise = transport.request("speechToText.downloadModel", undefined, {
+      timeoutMs: 0,
+    });
+    const sent = socket.sent.at(-1);
+    if (!sent) {
+      throw new Error("Expected request envelope to be sent");
+    }
+
+    const requestEnvelope = JSON.parse(sent) as { id: string };
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    socket.serverMessage(
+      JSON.stringify({
+        id: requestEnvelope.id,
+        result: { ok: true },
+      }),
+    );
+
+    await expect(requestPromise).resolves.toEqual({ ok: true });
+    transport.dispose();
+    vi.useRealTimers();
+  });
+
   it("routes valid push envelopes to channel listeners", () => {
     const transport = new WsTransport("ws://localhost:3020");
     const socket = getSocket();

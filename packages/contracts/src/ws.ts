@@ -37,6 +37,14 @@ import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload } from "./server";
+import {
+  SpeechToTextDeleteModelInput,
+  SpeechToTextDownloadModelInput,
+  SpeechToTextGetStateInput,
+  SpeechToTextSelectModelInput,
+  SpeechToTextState,
+  SpeechToTextTranscribeWavInput,
+} from "./speechToText";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -75,6 +83,11 @@ export const WS_METHODS = {
   // Server meta
   serverGetConfig: "server.getConfig",
   serverUpsertKeybinding: "server.upsertKeybinding",
+  speechToTextGetState: "speechToText.getState",
+  speechToTextDownloadModel: "speechToText.downloadModel",
+  speechToTextDeleteModel: "speechToText.deleteModel",
+  speechToTextSelectModel: "speechToText.selectModel",
+  speechToTextTranscribeWav: "speechToText.transcribeWav",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -83,6 +96,7 @@ export const WS_CHANNELS = {
   terminalEvent: "terminal.event",
   serverWelcome: "server.welcome",
   serverConfigUpdated: "server.configUpdated",
+  speechToTextUpdated: "speechToText.updated",
 } as const;
 
 // -- Tagged Union of all request body schemas ─────────────────────────
@@ -139,6 +153,11 @@ const WebSocketRequestBody = Schema.Union([
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
+  tagRequestBody(WS_METHODS.speechToTextGetState, SpeechToTextGetStateInput),
+  tagRequestBody(WS_METHODS.speechToTextDownloadModel, SpeechToTextDownloadModelInput),
+  tagRequestBody(WS_METHODS.speechToTextDeleteModel, SpeechToTextDeleteModelInput),
+  tagRequestBody(WS_METHODS.speechToTextSelectModel, SpeechToTextSelectModelInput),
+  tagRequestBody(WS_METHODS.speechToTextTranscribeWav, SpeechToTextTranscribeWavInput),
 ]);
 
 export const WebSocketRequest = Schema.Struct({
@@ -173,6 +192,7 @@ export interface WsPushPayloadByChannel {
   readonly [WS_CHANNELS.serverWelcome]: WsWelcomePayload;
   readonly [WS_CHANNELS.serverConfigUpdated]: typeof ServerConfigUpdatedPayload.Type;
   readonly [WS_CHANNELS.terminalEvent]: typeof TerminalEvent.Type;
+  readonly [WS_CHANNELS.speechToTextUpdated]: SpeechToTextState;
   readonly [ORCHESTRATION_WS_CHANNELS.domainEvent]: OrchestrationEvent;
 }
 
@@ -196,6 +216,10 @@ export const WsPushServerConfigUpdated = makeWsPushSchema(
   ServerConfigUpdatedPayload,
 );
 export const WsPushTerminalEvent = makeWsPushSchema(WS_CHANNELS.terminalEvent, TerminalEvent);
+export const WsPushSpeechToTextUpdated = makeWsPushSchema(
+  WS_CHANNELS.speechToTextUpdated,
+  SpeechToTextState,
+);
 export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   ORCHESTRATION_WS_CHANNELS.domainEvent,
   OrchestrationEvent,
@@ -205,6 +229,7 @@ export const WsPushChannelSchema = Schema.Literals([
   WS_CHANNELS.serverWelcome,
   WS_CHANNELS.serverConfigUpdated,
   WS_CHANNELS.terminalEvent,
+  WS_CHANNELS.speechToTextUpdated,
   ORCHESTRATION_WS_CHANNELS.domainEvent,
 ]);
 export type WsPushChannelSchema = typeof WsPushChannelSchema.Type;
@@ -213,6 +238,7 @@ export const WsPush = Schema.Union([
   WsPushServerWelcome,
   WsPushServerConfigUpdated,
   WsPushTerminalEvent,
+  WsPushSpeechToTextUpdated,
   WsPushOrchestrationDomainEvent,
 ]);
 export type WsPush = typeof WsPush.Type;
