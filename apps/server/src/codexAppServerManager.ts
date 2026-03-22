@@ -27,7 +27,7 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "./provider/codexCliVersion";
-import { resolveCliBinary } from "./provider/resolveCliBinary";
+import { resolveCliBinary, shouldUseShellForBinary } from "./provider/resolveCliBinary";
 
 type PendingRequestKey = string;
 
@@ -516,6 +516,7 @@ export interface CodexAppServerManagerEvents {
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
+  private readonly validatedCodexVersionKeys = new Set<string>();
 
   private runPromise: (effect: Effect.Effect<unknown, never>) => Promise<unknown>;
   constructor(services?: ServiceMap.ServiceMap<never>) {
@@ -545,11 +546,15 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       const codexOptions = readCodexProviderOptions(input);
       const codexBinaryPath = resolveCliBinary(codexOptions.binaryPath ?? "codex");
       const codexHomePath = codexOptions.homePath;
-      this.assertSupportedCodexCliVersion({
-        binaryPath: codexBinaryPath,
-        cwd: resolvedCwd,
-        ...(codexHomePath ? { homePath: codexHomePath } : {}),
-      });
+      const versionCheckKey = makeCodexVersionCheckKey(codexBinaryPath, codexHomePath);
+      if (!this.validatedCodexVersionKeys.has(versionCheckKey)) {
+        this.assertSupportedCodexCliVersion({
+          binaryPath: codexBinaryPath,
+          cwd: resolvedCwd,
+          ...(codexHomePath ? { homePath: codexHomePath } : {}),
+        });
+        this.validatedCodexVersionKeys.add(versionCheckKey);
+      }
       const child = spawn(codexBinaryPath, ["app-server"], {
         cwd: resolvedCwd,
         env: {
@@ -557,7 +562,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
           ...(codexHomePath ? { CODEX_HOME: codexHomePath } : {}),
         },
         stdio: ["pipe", "pipe", "pipe"],
-        shell: process.platform === "win32",
+        shell: shouldUseShellForBinary(codexBinaryPath),
       });
       const output = readline.createInterface({ input: child.stdout });
 
@@ -1619,7 +1624,7 @@ function assertSupportedCodexCliVersion(input: {
       ...(input.homePath ? { CODEX_HOME: input.homePath } : {}),
     },
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: shouldUseShellForBinary(binaryPath),
     stdio: ["ignore", "pipe", "pipe"],
     timeout: CODEX_VERSION_CHECK_TIMEOUT_MS,
     maxBuffer: 1024 * 1024,
@@ -1650,6 +1655,10 @@ function assertSupportedCodexCliVersion(input: {
   if (parsedVersion && !isCodexCliVersionSupported(parsedVersion)) {
     throw new Error(formatCodexCliUpgradeMessage(parsedVersion));
   }
+}
+
+function makeCodexVersionCheckKey(binaryPath: string, homePath?: string): string {
+  return `${binaryPath}\n${homePath ?? ""}`;
 }
 
 function readResumeCursorThreadId(resumeCursor: unknown): string | undefined {

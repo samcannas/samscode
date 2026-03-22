@@ -22,7 +22,7 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "../codexCliVersion";
-import { resolveCliBinary } from "../resolveCliBinary";
+import { resolveCliBinary, shouldUseShellForBinary } from "../resolveCliBinary";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
@@ -243,8 +243,9 @@ const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.
 const runCodexCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const command = ChildProcess.make(resolveCliBinary("codex"), [...args], {
-      shell: process.platform === "win32",
+    const binaryPath = resolveCliBinary("codex");
+    const command = ChildProcess.make(binaryPath, [...args], {
+      shell: shouldUseShellForBinary(binaryPath),
     });
 
     const child = yield* spawner.spawn(command);
@@ -264,8 +265,9 @@ const runCodexCommand = (args: ReadonlyArray<string>) =>
 const runClaudeCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const command = ChildProcess.make(resolveCliBinary("claude"), [...args], {
-      shell: process.platform === "win32",
+    const binaryPath = resolveCliBinary("claude");
+    const command = ChildProcess.make(binaryPath, [...args], {
+      shell: shouldUseShellForBinary(binaryPath),
     });
 
     const child = yield* spawner.spawn(command);

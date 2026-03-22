@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveCliBinary } from "./resolveCliBinary";
+import { resolveCliBinary, shouldUseShellForBinary } from "./resolveCliBinary";
 
 const tempDirs: string[] = [];
 
@@ -53,5 +53,24 @@ describe("resolveCliBinary", () => {
     });
 
     expect(resolved).toBe(path.join(repoBin, executableName));
+  });
+});
+
+describe("shouldUseShellForBinary", () => {
+  it("avoids cmd.exe for absolute executable paths on Windows", () => {
+    const binaryPath =
+      process.platform === "win32" ? "C:\\tools\\codex.exe" : "/usr/local/bin/codex";
+
+    expect(shouldUseShellForBinary(binaryPath)).toBe(false);
+  });
+
+  it("keeps shell mode for batch shims on Windows", () => {
+    if (process.platform !== "win32") {
+      expect(shouldUseShellForBinary("codex.cmd")).toBe(false);
+      return;
+    }
+
+    expect(shouldUseShellForBinary("C:\\Users\\sam\\AppData\\Roaming\\npm\\codex.cmd")).toBe(true);
+    expect(shouldUseShellForBinary("codex")).toBe(true);
   });
 });
