@@ -24,6 +24,45 @@ const LAUNCHER_VERSION = 1;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const desktopDir = resolve(__dirname, "..");
 
+function isMissingElectronBinaryError(error) {
+  return error instanceof Error && error.message.includes("Electron failed to install correctly");
+}
+
+function installElectronBinary(electronPackageDir) {
+  const result = spawnSync("node", ["install.js"], {
+    cwd: electronPackageDir,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+    },
+  });
+
+  if (result.status !== 0) {
+    const detail = result.error?.message ?? `install.js exited with code ${result.status ?? 1}`;
+    throw new Error(
+      `Electron is installed as a package but its desktop binary is missing, and automatic recovery failed. ${detail}`,
+      { cause: result.error },
+    );
+  }
+}
+
+function resolveElectronBinaryPath(require) {
+  try {
+    return require("electron");
+  } catch (error) {
+    if (!isMissingElectronBinaryError(error)) {
+      throw error;
+    }
+
+    const electronPackageJsonPath = require.resolve("electron/package.json");
+    const electronPackageDir = dirname(electronPackageJsonPath);
+    installElectronBinary(electronPackageDir);
+    return require("electron");
+  }
+}
+
 function setPlistString(plistPath, key, value) {
   const replaceResult = spawnSync("plutil", ["-replace", key, "-string", value, plistPath], {
     encoding: "utf8",
@@ -134,7 +173,7 @@ function buildMacLauncher(electronBinaryPath) {
 
 export function resolveElectronPath() {
   const require = createRequire(import.meta.url);
-  const electronBinaryPath = require("electron");
+  const electronBinaryPath = resolveElectronBinaryPath(require);
 
   if (process.platform !== "darwin") {
     return electronBinaryPath;
