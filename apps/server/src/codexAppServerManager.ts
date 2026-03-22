@@ -27,6 +27,7 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "./provider/codexCliVersion";
+import { resolveCliBinary } from "./provider/resolveCliBinary";
 
 type PendingRequestKey = string;
 
@@ -542,7 +543,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       };
 
       const codexOptions = readCodexProviderOptions(input);
-      const codexBinaryPath = codexOptions.binaryPath ?? "codex";
+      const codexBinaryPath = resolveCliBinary(codexOptions.binaryPath ?? "codex");
       const codexHomePath = codexOptions.homePath;
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
@@ -1610,7 +1611,8 @@ function assertSupportedCodexCliVersion(input: {
   readonly cwd: string;
   readonly homePath?: string;
 }): void {
-  const result = spawnSync(input.binaryPath, ["--version"], {
+  const binaryPath = resolveCliBinary(input.binaryPath);
+  const result = spawnSync(binaryPath, ["--version"], {
     cwd: input.cwd,
     env: {
       ...process.env,
@@ -1630,7 +1632,7 @@ function assertSupportedCodexCliVersion(input: {
       lower.includes("command not found") ||
       lower.includes("not found")
     ) {
-      throw new Error(`Codex CLI (${input.binaryPath}) is not installed or not executable.`);
+      throw new Error(`Codex CLI (${binaryPath}) is not installed or not executable.`);
     }
     throw new Error(
       `Failed to execute Codex CLI version check: ${result.error.message || String(result.error)}`,
