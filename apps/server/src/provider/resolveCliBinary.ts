@@ -10,17 +10,10 @@ function isNodeModulesBinDir(dirPath: string): boolean {
   return normalized.endsWith(path.normalize("node_modules/.bin").toLowerCase());
 }
 
-function fileExists(candidatePath: string): boolean {
+function isFileCandidate(candidatePath: string): boolean {
   try {
     const stat = fs.statSync(candidatePath);
-    if (!stat.isFile()) {
-      return false;
-    }
-    if (process.platform === "win32") {
-      return true;
-    }
-    fs.accessSync(candidatePath, fs.constants.X_OK);
-    return true;
+    return stat.isFile();
   } catch {
     return false;
   }
@@ -71,7 +64,7 @@ export function resolveCliBinary(command: string, env: NodeJS.ProcessEnv = proce
 
     for (const name of names) {
       const candidate = path.join(trimmedDir, name);
-      if (!fileExists(candidate)) {
+      if (!isFileCandidate(candidate)) {
         continue;
       }
       if (!isNodeModulesBinDir(trimmedDir)) {
@@ -82,4 +75,22 @@ export function resolveCliBinary(command: string, env: NodeJS.ProcessEnv = proce
   }
 
   return fallback ?? trimmed;
+}
+
+export function shouldUseShellForBinary(binaryPath: string): boolean {
+  if (process.platform !== "win32") {
+    return false;
+  }
+
+  const trimmed = binaryPath.trim();
+  if (trimmed.length === 0) {
+    return true;
+  }
+
+  if (!path.isAbsolute(trimmed) && !trimmed.startsWith(".") && !hasPathSeparator(trimmed)) {
+    return true;
+  }
+
+  const extension = path.extname(trimmed).toLowerCase();
+  return extension === ".cmd" || extension === ".bat";
 }
