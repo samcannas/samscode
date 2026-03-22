@@ -1,4 +1,5 @@
-const CODEX_VERSION_PATTERN = /\bv?(\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/;
+const CODEX_VERSION_PATTERN = /\bv?(\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/g;
+const CODEX_LABELED_LINE_PATTERN = /\bcodex(?:-cli)?\b/i;
 
 export const MINIMUM_CODEX_CLI_VERSION = "0.37.0";
 
@@ -118,17 +119,37 @@ export function compareCodexCliVersions(left: string, right: string): number {
 }
 
 export function parseCodexCliVersion(output: string): string | null {
-  const match = CODEX_VERSION_PATTERN.exec(output);
-  if (!match?.[1]) {
+  const labeledVersions: string[] = [];
+  const fallbackVersions: string[] = [];
+
+  for (const rawLine of output.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (line.length === 0) continue;
+
+    const matches = [...line.matchAll(CODEX_VERSION_PATTERN)]
+      .map((match) => match[1])
+      .filter((value): value is string => typeof value === "string")
+      .map(normalizeCodexVersion)
+      .filter((value) => parseSemver(value) !== null);
+
+    if (matches.length === 0) continue;
+
+    if (CODEX_LABELED_LINE_PATTERN.test(line)) {
+      labeledVersions.push(...matches);
+      continue;
+    }
+
+    fallbackVersions.push(...matches);
+  }
+
+  const candidates = labeledVersions.length > 0 ? labeledVersions : fallbackVersions;
+  if (candidates.length === 0) {
     return null;
   }
 
-  const parsed = parseSemver(match[1]);
-  if (!parsed) {
-    return null;
-  }
-
-  return normalizeCodexVersion(match[1]);
+  return candidates.reduce((best, candidate) =>
+    compareCodexCliVersions(candidate, best) > 0 ? candidate : best,
+  );
 }
 
 export function isCodexCliVersionSupported(version: string): boolean {
