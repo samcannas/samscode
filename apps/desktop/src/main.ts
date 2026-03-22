@@ -64,7 +64,6 @@ const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "Sam's Code (Dev)" : "Sam's Code (Alpha)";
 const APP_USER_MODEL_ID = "com.samstack.samscode";
 const USER_DATA_DIR_NAME = isDevelopment ? "samscode-dev" : "samscode";
-const LEGACY_USER_DATA_DIR_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
 const LOG_DIR = Path.join(STATE_DIR, "logs");
@@ -666,9 +665,7 @@ function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
  * parentheses (e.g. `~/.config/Sam's Code (Alpha)` on Linux). This is
  * unfriendly for shell usage and violates Linux naming conventions.
  *
- * We override it to a clean lowercase name (`samscode`). If the legacy
- * directory already exists we keep using it so existing users don't
- * lose their Chromium profile data (localStorage, cookies, sessions).
+ * We override it to a clean lowercase name (`samscode`).
  */
 function resolveUserDataPath(): string {
   const appDataBase =
@@ -677,11 +674,6 @@ function resolveUserDataPath(): string {
       : process.platform === "darwin"
         ? Path.join(OS.homedir(), "Library", "Application Support")
         : process.env.XDG_CONFIG_HOME || Path.join(OS.homedir(), ".config");
-
-  const legacyPath = Path.join(appDataBase, LEGACY_USER_DATA_DIR_NAME);
-  if (FS.existsSync(legacyPath)) {
-    return legacyPath;
-  }
 
   return Path.join(appDataBase, USER_DATA_DIR_NAME);
 }

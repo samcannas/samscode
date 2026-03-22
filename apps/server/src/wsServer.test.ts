@@ -1734,7 +1734,7 @@ describe("WebSocket Server", () => {
       pullRequest: {
         number: 42,
         title: "PR thread flow",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+        url: "https://github.com/samcannas/sample-repo/pull/42",
         baseBranch: "main",
         headBranch: "feature/pr-threads",
         state: "open" as const,

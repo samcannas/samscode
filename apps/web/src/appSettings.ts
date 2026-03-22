@@ -11,7 +11,6 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
 
 const APP_SETTINGS_STORAGE_KEY = "samscode:app-settings:v1";
-const LEGACY_APP_SETTINGS_STORAGE_KEYS = ["t3code:app-settings:v1"] as const;
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 
@@ -227,7 +226,6 @@ export function useAppSettings() {
     APP_SETTINGS_STORAGE_KEY,
     DEFAULT_APP_SETTINGS,
     AppSettingsSchema,
-    LEGACY_APP_SETTINGS_STORAGE_KEYS,
   );
 
   const updateSettings = useCallback(

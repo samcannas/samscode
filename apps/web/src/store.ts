@@ -24,34 +24,6 @@ export interface AppState {
 }
 
 const PERSISTED_STATE_KEY = "samscode:renderer-state:v8";
-const LEGACY_PERSISTED_STATE_KEYS = [
-  "t3code:renderer-state:v8",
-  "t3code:renderer-state:v7",
-  "t3code:renderer-state:v6",
-  "t3code:renderer-state:v5",
-  "t3code:renderer-state:v4",
-  "t3code:renderer-state:v3",
-  "codething:renderer-state:v4",
-  "codething:renderer-state:v3",
-  "codething:renderer-state:v2",
-  "codething:renderer-state:v1",
-] as const;
-
-function getPersistedStatePayload(): string | null {
-  if (typeof window === "undefined") return null;
-  const current = window.localStorage.getItem(PERSISTED_STATE_KEY);
-  if (current) {
-    return current;
-  }
-  for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-    const legacy = window.localStorage.getItem(legacyKey);
-    if (legacy) {
-      window.localStorage.setItem(PERSISTED_STATE_KEY, legacy);
-      return legacy;
-    }
-  }
-  return null;
-}
 
 const initialState: AppState = {
   projects: [],
@@ -66,7 +38,7 @@ const persistedProjectOrderCwds: string[] = [];
 function readPersistedState(): AppState {
   if (typeof window === "undefined") return initialState;
   try {
-    const raw = getPersistedStatePayload();
+    const raw = window.localStorage.getItem(PERSISTED_STATE_KEY);
     if (!raw) return initialState;
     const parsed = JSON.parse(raw) as {
       expandedProjectCwds?: string[];
@@ -90,8 +62,6 @@ function readPersistedState(): AppState {
   }
 }
 
-let legacyKeysCleanedUp = false;
-
 function persistState(state: AppState): void {
   if (typeof window === "undefined") return;
   try {
@@ -104,12 +74,6 @@ function persistState(state: AppState): void {
         projectOrderCwds: state.projects.map((project) => project.cwd),
       }),
     );
-    if (!legacyKeysCleanedUp) {
-      legacyKeysCleanedUp = true;
-      for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-        window.localStorage.removeItem(legacyKey);
-      }
-    }
   } catch {
     // Ignore quota/storage errors to avoid breaking chat UX.
   }

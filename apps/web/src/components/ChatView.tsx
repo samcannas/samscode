@@ -359,7 +359,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
     {},
     LastInvokedScriptByProjectSchema,
-    ["t3code:last-invoked-script-by-project"],
   );
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const [messagesScrollElement, setMessagesScrollElement] = useState<HTMLDivElement | null>(null);

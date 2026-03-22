@@ -1,4 +1,3 @@
-import * as FS from "node:fs";
 import * as OS from "node:os";
 import { Effect, Path } from "effect";
 import { readPathFromLoginShell } from "@samscode/shared/shell";
@@ -31,9 +30,7 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
   const { join, resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    const samscodeHome = join(OS.homedir(), ".samscode");
-    const legacyHome = join(OS.homedir(), ".t3");
-    return FS.existsSync(samscodeHome) || !FS.existsSync(legacyHome) ? samscodeHome : legacyHome;
+    return join(OS.homedir(), ".samscode");
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });

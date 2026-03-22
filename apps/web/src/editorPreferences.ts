@@ -3,15 +3,9 @@ import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "./hoo
 import { useMemo } from "react";
 
 const LAST_EDITOR_KEY = "samscode:last-editor";
-const LEGACY_LAST_EDITOR_KEYS = ["t3code:last-editor"] as const;
 
 export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {
-  const [lastEditor, setLastEditor] = useLocalStorage(
-    LAST_EDITOR_KEY,
-    null,
-    EditorId,
-    LEGACY_LAST_EDITOR_KEYS,
-  );
+  const [lastEditor, setLastEditor] = useLocalStorage(LAST_EDITOR_KEY, null, EditorId);
 
   const effectiveEditor = useMemo(() => {
     if (lastEditor && availableEditors.includes(lastEditor)) return lastEditor;
