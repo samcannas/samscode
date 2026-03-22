@@ -1,5 +1,4 @@
 import {
-  type ApprovalRequestId,
   DEFAULT_MODEL_BY_PROVIDER,
   type ClaudeCodeEffort,
   type MessageId,
@@ -14,6 +13,7 @@ import {
   type ServerProviderStatus,
   type ThreadId,
   type TurnId,
+  type UserInputRequestId,
   type EditorId,
   type KeybindingCommand,
   OrchestrationThreadActivity,
@@ -316,7 +316,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [isConnecting, _setIsConnecting] = useState(false);
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
-    ApprovalRequestId[]
+    UserInputRequestId[]
   >([]);
   const [pendingUserInputAnswersByRequestId, setPendingUserInputAnswersByRequestId] = useState<
     Record<string, Record<string, PendingUserInputDraftAnswer>>
@@ -2611,7 +2611,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   };
 
   const onRespondToUserInput = useCallback(
-    async (requestId: ApprovalRequestId, answers: Record<string, unknown>) => {
+    async (requestId: UserInputRequestId, answers: Record<string, unknown>) => {
       const api = readNativeApi();
       if (!api || !activeThreadId) return;
 

@@ -99,21 +99,19 @@ describe("resolveThreadStatusPill", () => {
     },
   };
 
-  it("shows pending approval before all other statuses", () => {
+  it("shows awaiting input before all other statuses", () => {
     expect(
       resolveThreadStatusPill({
         thread: baseThread,
-        hasPendingApprovals: true,
         hasPendingUserInput: true,
       }),
-    ).toMatchObject({ label: "Pending Approval", pulse: false });
+    ).toMatchObject({ label: "Awaiting Input", pulse: false });
   });
 
   it("shows awaiting input when plan mode is blocked on user answers", () => {
     expect(
       resolveThreadStatusPill({
         thread: baseThread,
-        hasPendingApprovals: false,
         hasPendingUserInput: true,
       }),
     ).toMatchObject({ label: "Awaiting Input", pulse: false });
@@ -123,7 +121,6 @@ describe("resolveThreadStatusPill", () => {
     expect(
       resolveThreadStatusPill({
         thread: baseThread,
-        hasPendingApprovals: false,
         hasPendingUserInput: false,
       }),
     ).toMatchObject({ label: "Working", pulse: true });
@@ -152,7 +149,6 @@ describe("resolveThreadStatusPill", () => {
             orchestrationStatus: "ready",
           },
         },
-        hasPendingApprovals: false,
         hasPendingUserInput: false,
       }),
     ).toMatchObject({ label: "Plan Ready", pulse: false });
@@ -181,7 +177,6 @@ describe("resolveThreadStatusPill", () => {
             orchestrationStatus: "ready",
           },
         },
-        hasPendingApprovals: false,
         hasPendingUserInput: false,
       }),
     ).toMatchObject({ label: "Completed", pulse: false });
@@ -201,7 +196,6 @@ describe("resolveThreadStatusPill", () => {
             orchestrationStatus: "ready",
           },
         },
-        hasPendingApprovals: false,
         hasPendingUserInput: false,
       }),
     ).toMatchObject({ label: "Completed", pulse: false });
@@ -247,9 +241,9 @@ describe("resolveProjectStatusIndicator", () => {
           pulse: false,
         },
         {
-          label: "Pending Approval",
-          colorClass: "text-amber-600",
-          dotClass: "bg-amber-500",
+          label: "Awaiting Input",
+          colorClass: "text-indigo-600",
+          dotClass: "bg-indigo-500",
           pulse: false,
         },
         {
@@ -259,7 +253,7 @@ describe("resolveProjectStatusIndicator", () => {
           pulse: true,
         },
       ]),
-    ).toMatchObject({ label: "Pending Approval", dotClass: "bg-amber-500" });
+    ).toMatchObject({ label: "Awaiting Input", dotClass: "bg-indigo-500" });
   });
 
   it("prefers plan-ready over completed when no stronger action is needed", () => {

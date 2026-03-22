@@ -17,7 +17,6 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
-  ApprovalRequestId,
   type CanonicalItemType,
   EventId,
   ProviderItemId,
@@ -32,6 +31,7 @@ import {
   RuntimeTaskId,
   ThreadId,
   TurnId,
+  UserInputRequestId,
   type UserInputQuestion,
 } from "@samscode/contracts";
 import {
@@ -137,7 +137,7 @@ interface ClaudeSessionContext {
   readonly startedAt: string;
   readonly basePermissionMode: PermissionMode | undefined;
   resumeSessionId: string | undefined;
-  readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
+  readonly pendingUserInputs: Map<UserInputRequestId, PendingUserInput>;
   readonly turns: Array<{
     id: TurnId;
     items: Array<unknown>;
@@ -251,7 +251,7 @@ function asCanonicalTurnId(value: TurnId): TurnId {
   return value;
 }
 
-function asRuntimeRequestId(value: ApprovalRequestId): RuntimeRequestId {
+function asRuntimeRequestId(value: UserInputRequestId): RuntimeRequestId {
   return RuntimeRequestId.makeUnsafe(value);
 }
 
@@ -2200,7 +2200,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           Stream.toAsyncIterable,
         );
 
-        const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
+        const pendingUserInputs = new Map<UserInputRequestId, PendingUserInput>();
         const inFlightTools = new Map<number, ToolInFlight>();
 
         const contextRef = yield* Ref.make<ClaudeSessionContext | undefined>(undefined);
@@ -2215,7 +2215,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           callbackOptions: { readonly signal: AbortSignal; readonly toolUseID?: string },
         ) =>
           Effect.gen(function* () {
-            const requestId = ApprovalRequestId.makeUnsafe(yield* Random.nextUUIDv4);
+            const requestId = UserInputRequestId.makeUnsafe(yield* Random.nextUUIDv4);
 
             // Parse questions from the SDK's AskUserQuestion input.
             const rawQuestions = Array.isArray(toolInput.questions) ? toolInput.questions : [];

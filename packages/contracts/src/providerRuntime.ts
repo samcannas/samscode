@@ -126,19 +126,6 @@ export const CanonicalItemType = Schema.Literals([
 ]);
 export type CanonicalItemType = typeof CanonicalItemType.Type;
 
-export const CanonicalRequestType = Schema.Literals([
-  "command_execution_approval",
-  "file_read_approval",
-  "file_change_approval",
-  "apply_patch_approval",
-  "exec_command_approval",
-  "tool_user_input",
-  "dynamic_tool_call",
-  "auth_tokens_refresh",
-  "unknown",
-]);
-export type CanonicalRequestType = typeof CanonicalRequestType.Type;
-
 const ProviderRuntimeEventType = Schema.Literals([
   "session.started",
   "session.configured",
@@ -164,8 +151,6 @@ const ProviderRuntimeEventType = Schema.Literals([
   "item.updated",
   "item.completed",
   "content.delta",
-  "request.opened",
-  "request.resolved",
   "user-input.requested",
   "user-input.resolved",
   "task.started",
@@ -214,8 +199,6 @@ const ItemStartedType = Schema.Literal("item.started");
 const ItemUpdatedType = Schema.Literal("item.updated");
 const ItemCompletedType = Schema.Literal("item.completed");
 const ContentDeltaType = Schema.Literal("content.delta");
-const RequestOpenedType = Schema.Literal("request.opened");
-const RequestResolvedType = Schema.Literal("request.resolved");
 const UserInputRequestedType = Schema.Literal("user-input.requested");
 const UserInputResolvedType = Schema.Literal("user-input.resolved");
 const TaskStartedType = Schema.Literal("task.started");
@@ -387,20 +370,6 @@ const ContentDeltaPayload = Schema.Struct({
   summaryIndex: Schema.optional(Schema.Int),
 });
 export type ContentDeltaPayload = typeof ContentDeltaPayload.Type;
-
-const RequestOpenedPayload = Schema.Struct({
-  requestType: CanonicalRequestType,
-  detail: Schema.optional(TrimmedNonEmptyStringSchema),
-  args: Schema.optional(Schema.Unknown),
-});
-export type RequestOpenedPayload = typeof RequestOpenedPayload.Type;
-
-const RequestResolvedPayload = Schema.Struct({
-  requestType: CanonicalRequestType,
-  decision: Schema.optional(TrimmedNonEmptyStringSchema),
-  resolution: Schema.optional(Schema.Unknown),
-});
-export type RequestResolvedPayload = typeof RequestResolvedPayload.Type;
 
 const UserInputQuestionOption = Schema.Struct({
   label: TrimmedNonEmptyStringSchema,
@@ -753,20 +722,6 @@ const ProviderRuntimeContentDeltaEvent = Schema.Struct({
 });
 export type ProviderRuntimeContentDeltaEvent = typeof ProviderRuntimeContentDeltaEvent.Type;
 
-const ProviderRuntimeRequestOpenedEvent = Schema.Struct({
-  ...ProviderRuntimeEventBase.fields,
-  type: RequestOpenedType,
-  payload: RequestOpenedPayload,
-});
-export type ProviderRuntimeRequestOpenedEvent = typeof ProviderRuntimeRequestOpenedEvent.Type;
-
-const ProviderRuntimeRequestResolvedEvent = Schema.Struct({
-  ...ProviderRuntimeEventBase.fields,
-  type: RequestResolvedType,
-  payload: RequestResolvedPayload,
-});
-export type ProviderRuntimeRequestResolvedEvent = typeof ProviderRuntimeRequestResolvedEvent.Type;
-
 const ProviderRuntimeUserInputRequestedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: UserInputRequestedType,
@@ -944,8 +899,6 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeItemUpdatedEvent,
   ProviderRuntimeItemCompletedEvent,
   ProviderRuntimeContentDeltaEvent,
-  ProviderRuntimeRequestOpenedEvent,
-  ProviderRuntimeRequestResolvedEvent,
   ProviderRuntimeUserInputRequestedEvent,
   ProviderRuntimeUserInputResolvedEvent,
   ProviderRuntimeTaskStartedEvent,
@@ -982,10 +935,6 @@ const ProviderRuntimeToolStartedEvent = ProviderRuntimeItemStartedEvent;
 export type ProviderRuntimeToolStartedEvent = ProviderRuntimeItemStartedEvent;
 const ProviderRuntimeToolCompletedEvent = ProviderRuntimeItemCompletedEvent;
 export type ProviderRuntimeToolCompletedEvent = ProviderRuntimeItemCompletedEvent;
-const ProviderRuntimeApprovalRequestedEvent = ProviderRuntimeRequestOpenedEvent;
-export type ProviderRuntimeApprovalRequestedEvent = ProviderRuntimeRequestOpenedEvent;
-const ProviderRuntimeApprovalResolvedEvent = ProviderRuntimeRequestResolvedEvent;
-export type ProviderRuntimeApprovalResolvedEvent = ProviderRuntimeRequestResolvedEvent;
 
 // Legacy helper aliases retained for adapters/tests.
 const ProviderRuntimeToolKind = Schema.Literals(["command", "file-read", "file-change", "other"]);

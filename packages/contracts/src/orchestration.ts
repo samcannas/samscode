@@ -1,7 +1,6 @@
 import { Option, Schema, SchemaIssue, Struct } from "effect";
 import { ProviderModelOptions } from "./model";
 import {
-  ApprovalRequestId,
   CheckpointRef,
   CommandId,
   EventId,
@@ -13,6 +12,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
   TurnId,
+  UserInputRequestId,
 } from "./baseSchemas";
 
 export const ORCHESTRATION_WS_METHODS = {
@@ -51,17 +51,8 @@ export type ProviderStartOptions = typeof ProviderStartOptions.Type;
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
 export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "default";
-export const ProviderRequestKind = Schema.Literals(["command", "file-read", "file-change"]);
-export type ProviderRequestKind = typeof ProviderRequestKind.Type;
 export const AssistantDeliveryMode = Schema.Literals(["buffered", "streaming"]);
 export type AssistantDeliveryMode = typeof AssistantDeliveryMode.Type;
-export const ProviderApprovalDecision = Schema.Literals([
-  "accept",
-  "acceptForSession",
-  "decline",
-  "cancel",
-]);
-export type ProviderApprovalDecision = typeof ProviderApprovalDecision.Type;
 export const ProviderUserInputAnswers = Schema.Record(Schema.String, Schema.Unknown);
 export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
 
@@ -213,12 +204,7 @@ export const OrchestrationCheckpointSummary = Schema.Struct({
 });
 export type OrchestrationCheckpointSummary = typeof OrchestrationCheckpointSummary.Type;
 
-export const OrchestrationThreadActivityTone = Schema.Literals([
-  "info",
-  "tool",
-  "approval",
-  "error",
-]);
+export const OrchestrationThreadActivityTone = Schema.Literals(["info", "tool", "error"]);
 export type OrchestrationThreadActivityTone = typeof OrchestrationThreadActivityTone.Type;
 
 export const OrchestrationThreadActivity = Schema.Struct({
@@ -401,7 +387,7 @@ const ThreadUserInputRespondCommand = Schema.Struct({
   type: Schema.Literal("thread.user-input.respond"),
   commandId: CommandId,
   threadId: ThreadId,
-  requestId: ApprovalRequestId,
+  requestId: UserInputRequestId,
   answers: ProviderUserInputAnswers,
   createdAt: IsoDateTime,
 });
@@ -657,7 +643,7 @@ export const ThreadTurnInterruptRequestedPayload = Schema.Struct({
 
 const ThreadUserInputResponseRequestedPayload = Schema.Struct({
   threadId: ThreadId,
-  requestId: ApprovalRequestId,
+  requestId: UserInputRequestId,
   answers: ProviderUserInputAnswers,
   createdAt: IsoDateTime,
 });
@@ -708,7 +694,7 @@ export const OrchestrationEventMetadata = Schema.Struct({
   providerTurnId: Schema.optional(TrimmedNonEmptyString),
   providerItemId: Schema.optional(ProviderItemId),
   adapterKey: Schema.optional(TrimmedNonEmptyString),
-  requestId: Schema.optional(ApprovalRequestId),
+  requestId: Schema.optional(UserInputRequestId),
   ingestedAt: Schema.optional(IsoDateTime),
 });
 export type OrchestrationEventMetadata = typeof OrchestrationEventMetadata.Type;

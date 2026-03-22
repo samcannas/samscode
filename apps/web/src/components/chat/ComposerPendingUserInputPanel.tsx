@@ -1,4 +1,4 @@
-import { type ApprovalRequestId } from "@samscode/contracts";
+import { type UserInputRequestId } from "@samscode/contracts";
 import { memo, useCallback, useEffect, useRef } from "react";
 import { type PendingUserInput } from "../../session-logic";
 import {
@@ -10,7 +10,7 @@ import { cn } from "~/lib/utils";
 
 interface PendingUserInputPanelProps {
   pendingUserInputs: PendingUserInput[];
-  respondingRequestIds: ApprovalRequestId[];
+  respondingRequestIds: UserInputRequestId[];
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
   onSelectOption: (questionId: string, optionLabel: string) => void;

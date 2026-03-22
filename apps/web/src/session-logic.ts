@@ -1,5 +1,4 @@
 import {
-  ApprovalRequestId,
   isToolLifecycleItemType,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
@@ -9,6 +8,7 @@ import {
   type UserInputQuestion,
   type ThreadId,
   type TurnId,
+  UserInputRequestId,
 } from "@samscode/contracts";
 
 import type {
@@ -49,7 +49,7 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
 }
 
 export interface PendingUserInput {
-  requestId: ApprovalRequestId;
+  requestId: UserInputRequestId;
   createdAt: string;
   questions: ReadonlyArray<UserInputQuestion>;
 }
@@ -204,7 +204,7 @@ function parseUserInputQuestions(
 export function derivePendingUserInputs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): PendingUserInput[] {
-  const openByRequestId = new Map<ApprovalRequestId, PendingUserInput>();
+  const openByRequestId = new Map<UserInputRequestId, PendingUserInput>();
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
 
   for (const activity of ordered) {
@@ -214,7 +214,7 @@ export function derivePendingUserInputs(
         : null;
     const requestId =
       payload && typeof payload.requestId === "string"
-        ? ApprovalRequestId.makeUnsafe(payload.requestId)
+        ? UserInputRequestId.makeUnsafe(payload.requestId)
         : null;
     const detail = payload && typeof payload.detail === "string" ? payload.detail : undefined;
 
@@ -412,7 +412,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     id: activity.id,
     createdAt: activity.createdAt,
     label: activity.summary,
-    tone: activity.tone === "approval" ? "info" : activity.tone,
+    tone: activity.tone,
     activityKind: activity.kind,
   };
   const itemType = extractWorkLogItemType(payload);

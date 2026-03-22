@@ -1,12 +1,12 @@
 import { Schema } from "effect";
 import {
-  ApprovalRequestId,
   EventId,
   IsoDateTime,
   ProviderItemId,
   ThreadId,
   TurnId,
   TrimmedNonEmptyString,
+  UserInputRequestId,
 } from "./baseSchemas";
 import { ProviderModelOptions } from "./model";
 import {
@@ -86,7 +86,7 @@ export type ProviderStopSessionInput = typeof ProviderStopSessionInput.Type;
 
 export const ProviderRespondToUserInputInput = Schema.Struct({
   threadId: ThreadId,
-  requestId: ApprovalRequestId,
+  requestId: UserInputRequestId,
   answers: ProviderUserInputAnswers,
 });
 export type ProviderRespondToUserInputInput = typeof ProviderRespondToUserInputInput.Type;
@@ -103,7 +103,7 @@ export const ProviderEvent = Schema.Struct({
   message: Schema.optional(TrimmedNonEmptyString),
   turnId: Schema.optional(TurnId),
   itemId: Schema.optional(ProviderItemId),
-  requestId: Schema.optional(ApprovalRequestId),
+  requestId: Schema.optional(UserInputRequestId),
   textDelta: Schema.optional(Schema.String),
   payload: Schema.optional(Schema.Unknown),
 });

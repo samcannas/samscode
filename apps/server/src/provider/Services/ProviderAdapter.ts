@@ -8,7 +8,6 @@
  * @module ProviderAdapter
  */
 import type {
-  ApprovalRequestId,
   ProviderKind,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
@@ -18,6 +17,7 @@ import type {
   ThreadId,
   ProviderTurnStartResult,
   TurnId,
+  UserInputRequestId,
 } from "@samscode/contracts";
 import type { Effect } from "effect";
 import type { Stream } from "effect";
@@ -72,7 +72,7 @@ export interface ProviderAdapterShape<TError> {
    */
   readonly respondToUserInput: (
     threadId: ThreadId,
-    requestId: ApprovalRequestId,
+    requestId: UserInputRequestId,
     answers: ProviderUserInputAnswers,
   ) => Effect.Effect<void, TError>;
 

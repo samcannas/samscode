@@ -4,12 +4,12 @@ import { EventEmitter } from "node:events";
 import readline from "node:readline";
 
 import {
-  ApprovalRequestId,
   EventId,
   ProviderItemId,
   type ProviderUserInputAnswers,
   ThreadId,
   TurnId,
+  UserInputRequestId,
   type ProviderEvent,
   type ProviderSession,
   type ProviderSessionStartInput,
@@ -24,6 +24,7 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "./provider/codexCliVersion";
+import { isIgnoredCodexGatedRequestMethod } from "./provider/codexIgnoredRequests";
 import { resolveCliBinary, shouldUseShellForBinary } from "./provider/resolveCliBinary";
 
 type PendingRequestKey = string;
@@ -36,7 +37,7 @@ interface PendingRequest {
 }
 
 interface PendingUserInputRequest {
-  requestId: ApprovalRequestId;
+  requestId: UserInputRequestId;
   jsonRpcId: string | number;
   threadId: ThreadId;
   turnId?: TurnId;
@@ -53,7 +54,7 @@ interface CodexSessionContext {
   child: ChildProcessWithoutNullStreams;
   output: readline.Interface;
   pending: Map<PendingRequestKey, PendingRequest>;
-  pendingUserInputs: Map<ApprovalRequestId, PendingUserInputRequest>;
+  pendingUserInputs: Map<UserInputRequestId, PendingUserInputRequest>;
   collabReceiverTurns: Map<string, TurnId>;
   nextRequestId: number;
   stopping: boolean;
@@ -859,7 +860,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
   async respondToUserInput(
     threadId: ThreadId,
-    requestId: ApprovalRequestId,
+    requestId: UserInputRequestId,
     answers: ProviderUserInputAnswers,
   ): Promise<void> {
     const context = this.requireSession(threadId);
@@ -1129,9 +1130,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     const rawRoute = this.readRouteFields(request.params);
     const childParentTurnId = this.readChildParentTurnId(context, request.params);
     const effectiveTurnId = childParentTurnId ?? rawRoute.turnId;
-    let requestId: ApprovalRequestId | undefined;
+    let requestId: UserInputRequestId | undefined;
     if (request.method === "item/tool/requestUserInput") {
-      requestId = ApprovalRequestId.makeUnsafe(randomUUID());
+      requestId = UserInputRequestId.makeUnsafe(randomUUID());
       context.pendingUserInputs.set(requestId, {
         requestId,
         jsonRpcId: request.id,
@@ -1154,6 +1155,13 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       payload: request.params,
     });
     if (request.method === "item/tool/requestUserInput") {
+      return;
+    }
+    if (isIgnoredCodexGatedRequestMethod(request.method)) {
+      this.writeMessage(context, {
+        id: request.id,
+        result: {},
+      });
       return;
     }
 

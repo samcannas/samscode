@@ -8,7 +8,6 @@
  */
 import {
   type CanonicalItemType,
-  type CanonicalRequestType,
   type ProviderEvent,
   type ProviderRuntimeEvent,
   type ProviderUserInputAnswers,
@@ -30,6 +29,10 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import {
+  isIgnoredCodexGatedRequestMethod,
+  isIgnoredCodexGatedResolvedPayload,
+} from "../codexIgnoredRequests.ts";
 import {
   CodexAppServerManager,
   type CodexAppServerStartSessionInput,
@@ -213,57 +216,6 @@ function itemDetail(
     return trimmed;
   }
   return undefined;
-}
-
-function toRequestTypeFromMethod(method: string): CanonicalRequestType {
-  switch (method) {
-    case "item/commandExecution/requestApproval":
-      return "command_execution_approval";
-    case "item/fileRead/requestApproval":
-      return "file_read_approval";
-    case "item/fileChange/requestApproval":
-      return "file_change_approval";
-    case "applyPatchApproval":
-      return "apply_patch_approval";
-    case "execCommandApproval":
-      return "exec_command_approval";
-    case "item/tool/requestUserInput":
-      return "tool_user_input";
-    case "item/tool/call":
-      return "dynamic_tool_call";
-    case "account/chatgptAuthTokens/refresh":
-      return "auth_tokens_refresh";
-    default:
-      return "unknown";
-  }
-}
-
-function toRequestTypeFromKind(kind: unknown): CanonicalRequestType {
-  switch (kind) {
-    case "command":
-      return "command_execution_approval";
-    case "file-read":
-      return "file_read_approval";
-    case "file-change":
-      return "file_change_approval";
-    default:
-      return "unknown";
-  }
-}
-
-function toRequestTypeFromResolvedPayload(
-  payload: Record<string, unknown> | undefined,
-): CanonicalRequestType {
-  const request = asObject(payload?.request);
-  const method = asString(request?.method) ?? asString(payload?.method);
-  if (method) {
-    return toRequestTypeFromMethod(method);
-  }
-  const requestKind = asString(request?.kind) ?? asString(payload?.requestKind);
-  if (requestKind) {
-    return toRequestTypeFromKind(requestKind);
-  }
-  return "unknown";
 }
 
 function toCanonicalUserInputAnswers(
@@ -564,19 +516,7 @@ function mapToRuntimeEvents(
       ];
     }
 
-    const detail =
-      asString(payload?.command) ?? asString(payload?.reason) ?? asString(payload?.prompt);
-    return [
-      {
-        ...runtimeEventBase(event, canonicalThreadId),
-        type: "request.opened",
-        payload: {
-          requestType: toRequestTypeFromMethod(event.method),
-          ...(detail ? { detail } : {}),
-          ...(event.payload !== undefined ? { args: event.payload } : {}),
-        },
-      },
-    ];
+    return [];
   }
 
   if (event.method === "session/connecting") {
@@ -895,23 +835,6 @@ function mapToRuntimeEvents(
           ...(asNumber(payload?.elapsedSeconds) !== undefined
             ? { elapsedSeconds: asNumber(payload?.elapsedSeconds) }
             : {}),
-        },
-      },
-    ];
-  }
-
-  if (event.method === "serverRequest/resolved") {
-    const requestType =
-      toRequestTypeFromResolvedPayload(payload) !== "unknown"
-        ? toRequestTypeFromResolvedPayload(payload)
-        : "unknown";
-    return [
-      {
-        ...runtimeEventBase(event, canonicalThreadId),
-        type: "request.resolved",
-        payload: {
-          requestType,
-          ...(event.payload !== undefined ? { resolution: event.payload } : {}),
         },
       },
     ];
@@ -1450,6 +1373,30 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
             yield* writeNativeEvent(event);
             const runtimeEvents = mapToRuntimeEvents(event, event.threadId);
             if (runtimeEvents.length === 0) {
+              if (event.kind === "request" && isIgnoredCodexGatedRequestMethod(event.method)) {
+                yield* Effect.logDebug("ignoring Codex gated request in autonomous-only mode", {
+                  method: event.method,
+                  threadId: event.threadId,
+                  turnId: event.turnId,
+                  itemId: event.itemId,
+                });
+                return;
+              }
+              if (
+                event.method === "serverRequest/resolved" &&
+                isIgnoredCodexGatedResolvedPayload(event.payload)
+              ) {
+                yield* Effect.logDebug(
+                  "ignoring Codex gated request resolution in autonomous-only mode",
+                  {
+                    method: event.method,
+                    threadId: event.threadId,
+                    turnId: event.turnId,
+                    itemId: event.itemId,
+                  },
+                );
+                return;
+              }
               yield* Effect.logDebug("ignoring unhandled Codex provider event", {
                 method: event.method,
                 threadId: event.threadId,
