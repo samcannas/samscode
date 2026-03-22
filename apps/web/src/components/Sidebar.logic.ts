@@ -10,20 +10,13 @@ export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-
 export type SidebarNewThreadEnvMode = "local" | "worktree";
 
 export interface ThreadStatusPill {
-  label:
-    | "Working"
-    | "Connecting"
-    | "Completed"
-    | "Pending Approval"
-    | "Awaiting Input"
-    | "Plan Ready";
+  label: "Working" | "Connecting" | "Completed" | "Awaiting Input" | "Plan Ready";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
 }
 
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 5,
   "Awaiting Input": 4,
   Working: 3,
   Connecting: 3,
@@ -92,19 +85,9 @@ export function resolveThreadRowClassName(input: {
 
 export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
-  hasPendingApprovals: boolean;
   hasPendingUserInput: boolean;
 }): ThreadStatusPill | null {
-  const { hasPendingApprovals, hasPendingUserInput, thread } = input;
-
-  if (hasPendingApprovals) {
-    return {
-      label: "Pending Approval",
-      colorClass: "text-amber-600 dark:text-amber-300/90",
-      dotClass: "bg-amber-500 dark:bg-amber-300/90",
-      pulse: false,
-    };
-  }
+  const { hasPendingUserInput, thread } = input;
 
   if (hasPendingUserInput) {
     return {

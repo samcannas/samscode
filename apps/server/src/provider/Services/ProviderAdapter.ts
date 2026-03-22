@@ -9,7 +9,6 @@
  */
 import type {
   ApprovalRequestId,
-  ProviderApprovalDecision,
   ProviderKind,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
@@ -67,15 +66,6 @@ export interface ProviderAdapterShape<TError> {
    * Interrupt an active turn.
    */
   readonly interruptTurn: (threadId: ThreadId, turnId?: TurnId) => Effect.Effect<void, TError>;
-
-  /**
-   * Respond to an interactive approval request.
-   */
-  readonly respondToRequest: (
-    threadId: ThreadId,
-    requestId: ApprovalRequestId,
-    decision: ProviderApprovalDecision,
-  ) => Effect.Effect<void, TError>;
 
   /**
    * Respond to a structured user-input request.

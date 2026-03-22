@@ -26,7 +26,6 @@ export function buildLocalDraftThread(
     projectId: draftThread.projectId,
     title: "New thread",
     model: fallbackModel,
-    runtimeMode: draftThread.runtimeMode,
     interactionMode: draftThread.interactionMode,
     session: null,
     messages: [],

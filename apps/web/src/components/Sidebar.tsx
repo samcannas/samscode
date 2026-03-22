@@ -42,7 +42,7 @@ import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import { useStore } from "../store";
 import { shortcutLabelForCommand } from "../keybindings";
-import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
+import { derivePendingUserInputs } from "../session-logic";
 import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
@@ -1339,7 +1339,6 @@ export default function Sidebar() {
                     projectThreads.map((thread) =>
                       resolveThreadStatusPill({
                         thread,
-                        hasPendingApprovals: derivePendingApprovals(thread.activities).length > 0,
                         hasPendingUserInput: derivePendingUserInputs(thread.activities).length > 0,
                       }),
                     ),
@@ -1443,8 +1442,6 @@ export default function Sidebar() {
                                 const isHighlighted = isActive || isSelected;
                                 const threadStatus = resolveThreadStatusPill({
                                   thread,
-                                  hasPendingApprovals:
-                                    derivePendingApprovals(thread.activities).length > 0,
                                   hasPendingUserInput:
                                     derivePendingUserInputs(thread.activities).length > 0,
                                 });

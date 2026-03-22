@@ -1,5 +1,4 @@
 import {
-  ApprovalRequestId,
   type AssistantDeliveryMode,
   CommandId,
   MessageId,
@@ -58,10 +57,6 @@ type RuntimeIngestionInput =
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
   return value === undefined ? undefined : TurnId.makeUnsafe(String(value));
-}
-
-function toApprovalRequestId(value: string | undefined): ApprovalRequestId | undefined {
-  return value === undefined ? undefined : ApprovalRequestId.makeUnsafe(value);
 }
 
 function sameId(left: string | null | undefined, right: string | null | undefined): boolean {
@@ -161,23 +156,6 @@ function orchestrationSessionStatusFromRuntimeState(
   }
 }
 
-function requestKindFromCanonicalRequestType(
-  requestType: string | undefined,
-): "command" | "file-read" | "file-change" | undefined {
-  switch (requestType) {
-    case "command_execution_approval":
-    case "exec_command_approval":
-      return "command";
-    case "file_read_approval":
-      return "file-read";
-    case "file_change_approval":
-    case "apply_patch_approval":
-      return "file-change";
-    default:
-      return undefined;
-  }
-}
-
 function runtimeEventToActivities(
   event: ProviderRuntimeEvent,
 ): ReadonlyArray<OrchestrationThreadActivity> {
@@ -188,61 +166,6 @@ function runtimeEventToActivities(
       : {};
   })();
   switch (event.type) {
-    case "request.opened": {
-      if (event.payload.requestType === "tool_user_input") {
-        return [];
-      }
-      const requestKind = requestKindFromCanonicalRequestType(event.payload.requestType);
-      return [
-        {
-          id: event.eventId,
-          createdAt: event.createdAt,
-          tone: "approval",
-          kind: "approval.requested",
-          summary:
-            requestKind === "command"
-              ? "Command approval requested"
-              : requestKind === "file-read"
-                ? "File-read approval requested"
-                : requestKind === "file-change"
-                  ? "File-change approval requested"
-                  : "Approval requested",
-          payload: {
-            requestId: toApprovalRequestId(event.requestId),
-            ...(requestKind ? { requestKind } : {}),
-            requestType: event.payload.requestType,
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-          },
-          turnId: toTurnId(event.turnId) ?? null,
-          ...maybeSequence,
-        },
-      ];
-    }
-
-    case "request.resolved": {
-      if (event.payload.requestType === "tool_user_input") {
-        return [];
-      }
-      const requestKind = requestKindFromCanonicalRequestType(event.payload.requestType);
-      return [
-        {
-          id: event.eventId,
-          createdAt: event.createdAt,
-          tone: "approval",
-          kind: "approval.resolved",
-          summary: "Approval resolved",
-          payload: {
-            requestId: toApprovalRequestId(event.requestId),
-            ...(requestKind ? { requestKind } : {}),
-            requestType: event.payload.requestType,
-            ...(event.payload.decision ? { decision: event.payload.decision } : {}),
-          },
-          turnId: toTurnId(event.turnId) ?? null,
-          ...maybeSequence,
-        },
-      ];
-    }
-
     case "runtime.error": {
       const message = runtimeErrorMessageFromEvent(event);
       if (!message) {
@@ -971,7 +894,6 @@ const make = Effect.gen(function* () {
               threadId: thread.id,
               status,
               providerName: event.provider,
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
               activeTurnId: nextActiveTurnId,
               lastError,
               updatedAt: now,
@@ -1140,7 +1062,6 @@ const make = Effect.gen(function* () {
               threadId: thread.id,
               status: "error",
               providerName: event.provider,
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
               activeTurnId: eventTurnId ?? null,
               lastError: runtimeErrorMessage,
               updatedAt: now,

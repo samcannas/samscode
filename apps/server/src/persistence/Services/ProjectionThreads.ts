@@ -10,7 +10,6 @@ import {
   IsoDateTime,
   ProjectId,
   ProviderInteractionMode,
-  RuntimeMode,
   ThreadId,
   TurnId,
 } from "@samscode/contracts";
@@ -24,7 +23,6 @@ export const ProjectionThread = Schema.Struct({
   projectId: ProjectId,
   title: Schema.String,
   model: Schema.String,
-  runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
@@ -35,59 +33,28 @@ export const ProjectionThread = Schema.Struct({
 });
 export type ProjectionThread = typeof ProjectionThread.Type;
 
-export const GetProjectionThreadInput = Schema.Struct({
-  threadId: ThreadId,
-});
+export const GetProjectionThreadInput = Schema.Struct({ threadId: ThreadId });
 export type GetProjectionThreadInput = typeof GetProjectionThreadInput.Type;
 
-export const DeleteProjectionThreadInput = Schema.Struct({
-  threadId: ThreadId,
-});
+export const DeleteProjectionThreadInput = Schema.Struct({ threadId: ThreadId });
 export type DeleteProjectionThreadInput = typeof DeleteProjectionThreadInput.Type;
 
-export const ListProjectionThreadsByProjectInput = Schema.Struct({
-  projectId: ProjectId,
-});
+export const ListProjectionThreadsByProjectInput = Schema.Struct({ projectId: ProjectId });
 export type ListProjectionThreadsByProjectInput = typeof ListProjectionThreadsByProjectInput.Type;
 
-/**
- * ProjectionThreadRepositoryShape - Service API for projected thread records.
- */
 export interface ProjectionThreadRepositoryShape {
-  /**
-   * Insert or replace a projected thread row.
-   *
-   * Upserts by `threadId`.
-   */
   readonly upsert: (thread: ProjectionThread) => Effect.Effect<void, ProjectionRepositoryError>;
-
-  /**
-   * Read a projected thread row by id.
-   */
   readonly getById: (
     input: GetProjectionThreadInput,
   ) => Effect.Effect<Option.Option<ProjectionThread>, ProjectionRepositoryError>;
-
-  /**
-   * List projected threads for a project.
-   *
-   * Returned in deterministic creation order.
-   */
   readonly listByProjectId: (
     input: ListProjectionThreadsByProjectInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionThread>, ProjectionRepositoryError>;
-
-  /**
-   * Soft-delete a projected thread row by id.
-   */
   readonly deleteById: (
     input: DeleteProjectionThreadInput,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
 }
 
-/**
- * ProjectionThreadRepository - Service tag for thread projection persistence.
- */
 export class ProjectionThreadRepository extends ServiceMap.Service<
   ProjectionThreadRepository,
   ProjectionThreadRepositoryShape

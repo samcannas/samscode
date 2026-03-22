@@ -15,12 +15,11 @@ import {
   RuntimeItemId,
   RuntimeRequestId,
   RuntimeTaskId,
-  ProviderApprovalDecision,
   ProviderItemId,
   ThreadId,
   TurnId,
 } from "@samscode/contracts";
-import { Effect, FileSystem, Layer, Queue, Schema, ServiceMap, Stream } from "effect";
+import { Effect, FileSystem, Layer, Queue, ServiceMap, Stream } from "effect";
 
 import {
   ProviderAdapterProcessError,
@@ -580,25 +579,6 @@ function mapToRuntimeEvents(
     ];
   }
 
-  if (event.method === "item/requestApproval/decision" && event.requestId) {
-    const decision = Schema.decodeUnknownSync(ProviderApprovalDecision)(payload?.decision);
-    const requestType =
-      event.requestKind !== undefined
-        ? toRequestTypeFromKind(event.requestKind)
-        : toRequestTypeFromMethod(event.method);
-    return [
-      {
-        ...runtimeEventBase(event, canonicalThreadId),
-        type: "request.resolved",
-        payload: {
-          requestType,
-          ...(decision ? { decision } : {}),
-          ...(event.payload !== undefined ? { resolution: event.payload } : {}),
-        },
-      },
-    ];
-  }
-
   if (event.method === "session/connecting") {
     return [
       {
@@ -924,9 +904,7 @@ function mapToRuntimeEvents(
     const requestType =
       toRequestTypeFromResolvedPayload(payload) !== "unknown"
         ? toRequestTypeFromResolvedPayload(payload)
-        : event.requestId && event.requestKind !== undefined
-          ? toRequestTypeFromKind(event.requestKind)
-          : "unknown";
+        : "unknown";
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1312,7 +1290,6 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
-        runtimeMode: input.runtimeMode,
         ...(input.model !== undefined ? { model: input.model } : {}),
         ...(input.modelOptions?.codex?.fastMode ? { serviceTier: "fast" } : {}),
       };
@@ -1429,17 +1406,6 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         })),
       );
     };
-
-    const respondToRequest: CodexAdapterShape["respondToRequest"] = (
-      threadId,
-      requestId,
-      decision,
-    ) =>
-      Effect.tryPromise({
-        try: () => manager.respondToRequest(threadId, requestId, decision),
-        catch: (cause) => toRequestError(threadId, "item/requestApproval/decision", cause),
-      });
-
     const respondToUserInput: CodexAdapterShape["respondToUserInput"] = (
       threadId,
       requestId,
@@ -1516,7 +1482,6 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       interruptTurn,
       readThread,
       rollbackThread,
-      respondToRequest,
       respondToUserInput,
       stopSession,
       listSessions,

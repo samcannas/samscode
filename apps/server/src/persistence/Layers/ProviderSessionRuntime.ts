@@ -46,9 +46,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
         INSERT INTO provider_session_runtime (
           thread_id,
           provider_name,
-          adapter_key,
-          runtime_mode,
-          status,
+          adapter_key,          status,
           last_seen_at,
           resume_cursor_json,
           runtime_payload_json
@@ -56,9 +54,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
         VALUES (
           ${runtime.threadId},
           ${runtime.providerName},
-          ${runtime.adapterKey},
-          ${runtime.runtimeMode},
-          ${runtime.status},
+          ${runtime.adapterKey},          ${runtime.status},
           ${runtime.lastSeenAt},
           ${runtime.resumeCursor},
           ${runtime.runtimePayload}
@@ -66,9 +62,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
         ON CONFLICT (thread_id)
         DO UPDATE SET
           provider_name = excluded.provider_name,
-          adapter_key = excluded.adapter_key,
-          runtime_mode = excluded.runtime_mode,
-          status = excluded.status,
+          adapter_key = excluded.adapter_key,          status = excluded.status,
           last_seen_at = excluded.last_seen_at,
           resume_cursor_json = excluded.resume_cursor_json,
           runtime_payload_json = excluded.runtime_payload_json
@@ -83,9 +77,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           provider_name AS "providerName",
-          adapter_key AS "adapterKey",
-          runtime_mode AS "runtimeMode",
-          status,
+          adapter_key AS "adapterKey",          status,
           last_seen_at AS "lastSeenAt",
           resume_cursor_json AS "resumeCursor",
           runtime_payload_json AS "runtimePayload"
@@ -102,9 +94,7 @@ const makeProviderSessionRuntimeRepository = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           provider_name AS "providerName",
-          adapter_key AS "adapterKey",
-          runtime_mode AS "runtimeMode",
-          status,
+          adapter_key AS "adapterKey",          status,
           last_seen_at AS "lastSeenAt",
           resume_cursor_json AS "resumeCursor",
           runtime_payload_json AS "runtimePayload"

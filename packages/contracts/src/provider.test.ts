@@ -19,7 +19,6 @@ describe("ProviderSessionStartInput", () => {
           fastMode: true,
         },
       },
-      runtimeMode: "full-access",
       providerOptions: {
         codex: {
           binaryPath: "/usr/local/bin/codex",
@@ -27,20 +26,18 @@ describe("ProviderSessionStartInput", () => {
         },
       },
     });
-    expect(parsed.runtimeMode).toBe("full-access");
     expect(parsed.modelOptions?.codex?.reasoningEffort).toBe("high");
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
     expect(parsed.providerOptions?.codex?.binaryPath).toBe("/usr/local/bin/codex");
     expect(parsed.providerOptions?.codex?.homePath).toBe("/tmp/.codex");
   });
 
-  it("rejects payloads without runtime mode", () => {
-    expect(() =>
-      decodeProviderSessionStartInput({
-        threadId: "thread-1",
-        provider: "codex",
-      }),
-    ).toThrow();
+  it("accepts payloads without runtime mode", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "codex",
+    });
+    expect(parsed.provider).toBe("codex");
   });
 
   it("accepts claude runtime knobs", () => {
@@ -63,7 +60,6 @@ describe("ProviderSessionStartInput", () => {
           maxThinkingTokens: 12_000,
         },
       },
-      runtimeMode: "full-access",
     });
     expect(parsed.provider).toBe("claudeAgent");
     expect(parsed.modelOptions?.claudeAgent?.thinking).toBe(true);
@@ -72,7 +68,6 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.claudeAgent?.binaryPath).toBe("/usr/local/bin/claude");
     expect(parsed.providerOptions?.claudeAgent?.permissionMode).toBe("plan");
     expect(parsed.providerOptions?.claudeAgent?.maxThinkingTokens).toBe(12_000);
-    expect(parsed.runtimeMode).toBe("full-access");
   });
 });
 

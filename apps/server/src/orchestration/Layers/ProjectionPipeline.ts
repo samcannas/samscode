@@ -1,15 +1,10 @@
-import {
-  ApprovalRequestId,
-  type ChatAttachment,
-  type OrchestrationEvent,
-} from "@samscode/contracts";
+import { type ChatAttachment, type OrchestrationEvent } from "@samscode/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
-import { ProjectionPendingApprovalRepository } from "../../persistence/Services/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepository } from "../../persistence/Services/ProjectionProjects.ts";
 import { ProjectionStateRepository } from "../../persistence/Services/ProjectionState.ts";
 import { ProjectionThreadActivityRepository } from "../../persistence/Services/ProjectionThreadActivities.ts";
@@ -28,7 +23,6 @@ import {
   ProjectionTurnRepository,
 } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
-import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
 import { ProjectionStateRepositoryLive } from "../../persistence/Layers/ProjectionState.ts";
 import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers/ProjectionThreadActivities.ts";
@@ -58,7 +52,6 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadSessions: "projection.thread-sessions",
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
-  pendingApprovals: "projection.pending-approvals",
 } as const;
 
 type ProjectorName =
@@ -81,14 +74,6 @@ const materializeAttachmentsForProjection = Effect.fn(
   (input: { readonly attachments: ReadonlyArray<ChatAttachment> }) =>
     Effect.succeed(input.attachments.length === 0 ? [] : input.attachments),
 );
-
-function extractActivityRequestId(payload: unknown): ApprovalRequestId | null {
-  if (typeof payload !== "object" || payload === null) {
-    return null;
-  }
-  const requestId = (payload as Record<string, unknown>).requestId;
-  return typeof requestId === "string" ? ApprovalRequestId.makeUnsafe(requestId) : null;
-}
 
 function retainProjectionMessagesAfterRevert(
   messages: ReadonlyArray<ProjectionThreadMessage>,
@@ -348,8 +333,6 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
   const projectionThreadActivityRepository = yield* ProjectionThreadActivityRepository;
   const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
-  const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
-
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
@@ -421,7 +404,6 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
             projectId: event.payload.projectId,
             title: event.payload.title,
             model: event.payload.model,
-            runtimeMode: event.payload.runtimeMode,
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
@@ -447,21 +429,6 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
             ...(event.payload.worktreePath !== undefined
               ? { worktreePath: event.payload.worktreePath }
               : {}),
-            updatedAt: event.payload.updatedAt,
-          });
-          return;
-        }
-
-        case "thread.runtime-mode-set": {
-          const existingRow = yield* projectionThreadRepository.getById({
-            threadId: event.payload.threadId,
-          });
-          if (Option.isNone(existingRow)) {
-            return;
-          }
-          yield* projectionThreadRepository.upsert({
-            ...existingRow.value,
-            runtimeMode: event.payload.runtimeMode,
             updatedAt: event.payload.updatedAt,
           });
           return;
@@ -760,7 +727,6 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
         threadId: event.payload.threadId,
         status: event.payload.session.status,
         providerName: event.payload.session.providerName,
-        runtimeMode: event.payload.session.runtimeMode,
         activeTurnId: event.payload.session.activeTurnId,
         lastError: event.payload.session.lastError,
         updatedAt: event.payload.session.updatedAt,
@@ -1027,96 +993,6 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
 
   const applyCheckpointsProjection: ProjectorDefinition["apply"] = () => Effect.void;
 
-  const applyPendingApprovalsProjection: ProjectorDefinition["apply"] = (
-    event,
-    _attachmentSideEffects,
-  ) =>
-    Effect.gen(function* () {
-      switch (event.type) {
-        case "thread.activity-appended": {
-          const requestId =
-            extractActivityRequestId(event.payload.activity.payload) ??
-            event.metadata.requestId ??
-            null;
-          if (requestId === null) {
-            return;
-          }
-          const existingRow = yield* projectionPendingApprovalRepository.getByRequestId({
-            requestId,
-          });
-          if (event.payload.activity.kind === "approval.resolved") {
-            const resolvedDecisionRaw =
-              typeof event.payload.activity.payload === "object" &&
-              event.payload.activity.payload !== null &&
-              "decision" in event.payload.activity.payload
-                ? (event.payload.activity.payload as { decision?: unknown }).decision
-                : null;
-            const resolvedDecision =
-              resolvedDecisionRaw === "accept" ||
-              resolvedDecisionRaw === "acceptForSession" ||
-              resolvedDecisionRaw === "decline" ||
-              resolvedDecisionRaw === "cancel"
-                ? resolvedDecisionRaw
-                : null;
-            yield* projectionPendingApprovalRepository.upsert({
-              requestId,
-              threadId: Option.isSome(existingRow)
-                ? existingRow.value.threadId
-                : event.payload.threadId,
-              turnId: Option.isSome(existingRow)
-                ? existingRow.value.turnId
-                : event.payload.activity.turnId,
-              status: "resolved",
-              decision: resolvedDecision,
-              createdAt: Option.isSome(existingRow)
-                ? existingRow.value.createdAt
-                : event.payload.activity.createdAt,
-              resolvedAt: event.payload.activity.createdAt,
-            });
-            return;
-          }
-          if (Option.isSome(existingRow) && existingRow.value.status === "resolved") {
-            return;
-          }
-          yield* projectionPendingApprovalRepository.upsert({
-            requestId,
-            threadId: event.payload.threadId,
-            turnId: event.payload.activity.turnId,
-            status: "pending",
-            decision: null,
-            createdAt: Option.isSome(existingRow)
-              ? existingRow.value.createdAt
-              : event.payload.activity.createdAt,
-            resolvedAt: null,
-          });
-          return;
-        }
-
-        case "thread.approval-response-requested": {
-          const existingRow = yield* projectionPendingApprovalRepository.getByRequestId({
-            requestId: event.payload.requestId,
-          });
-          yield* projectionPendingApprovalRepository.upsert({
-            requestId: event.payload.requestId,
-            threadId: Option.isSome(existingRow)
-              ? existingRow.value.threadId
-              : event.payload.threadId,
-            turnId: Option.isSome(existingRow) ? existingRow.value.turnId : null,
-            status: "resolved",
-            decision: event.payload.decision,
-            createdAt: Option.isSome(existingRow)
-              ? existingRow.value.createdAt
-              : event.payload.createdAt,
-            resolvedAt: event.payload.createdAt,
-          });
-          return;
-        }
-
-        default:
-          return;
-      }
-    });
-
   const projectors: ReadonlyArray<ProjectorDefinition> = [
     {
       name: ORCHESTRATION_PROJECTOR_NAMES.projects,
@@ -1145,10 +1021,6 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
     {
       name: ORCHESTRATION_PROJECTOR_NAMES.checkpoints,
       apply: applyCheckpointsProjection,
-    },
-    {
-      name: ORCHESTRATION_PROJECTOR_NAMES.pendingApprovals,
-      apply: applyPendingApprovalsProjection,
     },
     {
       name: ORCHESTRATION_PROJECTOR_NAMES.threads,
@@ -1253,6 +1125,5 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
   Layer.provideMerge(ProjectionThreadActivityRepositoryLive),
   Layer.provideMerge(ProjectionThreadSessionRepositoryLive),
   Layer.provideMerge(ProjectionTurnRepositoryLive),
-  Layer.provideMerge(ProjectionPendingApprovalRepositoryLive),
   Layer.provideMerge(ProjectionStateRepositoryLive),
 );

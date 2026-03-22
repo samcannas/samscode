@@ -19,7 +19,6 @@ import {
   ThreadInteractionModeSetPayload,
   ThreadMetaUpdatedPayload,
   ThreadProposedPlanUpsertedPayload,
-  ThreadRuntimeModeSetPayload,
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
@@ -253,7 +252,6 @@ export function projectEvent(
             projectId: payload.projectId,
             title: payload.title,
             model: payload.model,
-            runtimeMode: payload.runtimeMode,
             interactionMode: payload.interactionMode,
             branch: payload.branch,
             worktreePath: payload.worktreePath,
@@ -302,18 +300,6 @@ export function projectEvent(
           }),
         })),
       );
-
-    case "thread.runtime-mode-set":
-      return decodeForEvent(ThreadRuntimeModeSetPayload, event.payload, event.type, "payload").pipe(
-        Effect.map((payload) => ({
-          ...nextBase,
-          threads: updateThread(nextBase.threads, payload.threadId, {
-            runtimeMode: payload.runtimeMode,
-            updatedAt: payload.updatedAt,
-          }),
-        })),
-      );
-
     case "thread.interaction-mode-set":
       return decodeForEvent(
         ThreadInteractionModeSetPayload,

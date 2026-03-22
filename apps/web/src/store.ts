@@ -23,7 +23,7 @@ export interface AppState {
   threadsHydrated: boolean;
 }
 
-const PERSISTED_STATE_KEY = "samscode:renderer-state:v8";
+const PERSISTED_STATE_KEY = "samscode:renderer-state:v9";
 
 const initialState: AppState = {
   projects: [],
@@ -241,7 +241,6 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
           }),
           thread.model,
         ),
-        runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
         session: thread.session
           ? {

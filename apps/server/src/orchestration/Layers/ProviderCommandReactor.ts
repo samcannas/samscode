@@ -10,7 +10,6 @@ import {
   type OrchestrationSession,
   ThreadId,
   type ProviderSession,
-  type RuntimeMode,
   type TurnId,
 } from "@samscode/contracts";
 import { Cache, Cause, Duration, Effect, Layer, Option, Schema, Stream } from "effect";
@@ -32,10 +31,8 @@ type ProviderIntentEvent = Extract<
   OrchestrationEvent,
   {
     type:
-      | "thread.runtime-mode-set"
       | "thread.turn-start-requested"
       | "thread.turn-interrupt-requested"
-      | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
       | "thread.session-stop-requested";
   }
@@ -72,7 +69,6 @@ const serverCommandId = (tag: string): CommandId =>
 
 const HANDLED_TURN_START_KEY_MAX = 10_000;
 const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
-const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const WORKTREE_BRANCH_PREFIX = "samscode";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
 
@@ -80,22 +76,6 @@ const sameModelOptions = (
   left: ProviderModelOptions | undefined,
   right: ProviderModelOptions | undefined,
 ): boolean => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
-
-function isUnknownPendingApprovalRequestError(cause: Cause.Cause<ProviderServiceError>): boolean {
-  const error = Cause.squash(cause);
-  if (Schema.is(ProviderAdapterRequestError)(error)) {
-    const detail = error.detail.toLowerCase();
-    return (
-      detail.includes("unknown pending approval request") ||
-      detail.includes("unknown pending permission request")
-    );
-  }
-  const message = Cause.pretty(cause);
-  return (
-    message.includes("unknown pending approval request") ||
-    message.includes("unknown pending permission request")
-  );
-}
 
 function isUnknownPendingUserInputRequestError(cause: Cause.Cause<ProviderServiceError>): boolean {
   const error = Cause.squash(cause);
@@ -105,10 +85,7 @@ function isUnknownPendingUserInputRequestError(cause: Cause.Cause<ProviderServic
   return Cause.pretty(cause).toLowerCase().includes("unknown pending user-input request");
 }
 
-function stalePendingRequestDetail(
-  requestKind: "approval" | "user-input",
-  requestId: string,
-): string {
+function stalePendingRequestDetail(requestKind: "user-input", requestId: string): string {
   return `Stale pending ${requestKind} request: ${requestId}. Provider callback state does not survive app restarts or recovered sessions. Restart the turn to continue.`;
 }
 
@@ -165,7 +142,6 @@ const make = Effect.gen(function* () {
     readonly kind:
       | "provider.turn.start.failed"
       | "provider.turn.interrupt.failed"
-      | "provider.approval.respond.failed"
       | "provider.user-input.respond.failed"
       | "provider.session.stop.failed";
     readonly summary: string;
@@ -226,8 +202,6 @@ const make = Effect.gen(function* () {
     if (!thread) {
       return yield* Effect.die(new Error(`Thread '${threadId}' was not found in read model.`));
     }
-
-    const desiredRuntimeMode = thread.runtimeMode;
     const currentProvider: ProviderKind | undefined = Schema.is(ProviderKind)(
       thread.session?.providerName,
     )
@@ -279,7 +253,6 @@ const make = Effect.gen(function* () {
           ? { providerOptions: options.providerOptions }
           : {}),
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-        runtimeMode: desiredRuntimeMode,
       });
 
     const bindSessionToThread = (session: ProviderSession) =>
@@ -288,9 +261,7 @@ const make = Effect.gen(function* () {
         session: {
           threadId,
           status: mapProviderSessionStatusToOrchestrationStatus(session.status),
-          providerName: session.provider,
-          runtimeMode: desiredRuntimeMode,
-          // Provider turn ids are not orchestration turn ids.
+          providerName: session.provider, // Provider turn ids are not orchestration turn ids.
           activeTurnId: null,
           lastError: session.lastError ?? null,
           updatedAt: session.updatedAt,
@@ -301,7 +272,6 @@ const make = Effect.gen(function* () {
     const existingSessionThreadId =
       thread.session && thread.session.status !== "stopped" ? thread.id : null;
     if (existingSessionThreadId) {
-      const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
       const providerChanged =
         options?.provider !== undefined && options.provider !== currentProvider;
       const activeSession = yield* resolveActiveSession(existingSessionThreadId);
@@ -317,12 +287,7 @@ const make = Effect.gen(function* () {
         options?.modelOptions !== undefined &&
         !sameModelOptions(previousModelOptions, options.modelOptions);
 
-      if (
-        !runtimeModeChanged &&
-        !providerChanged &&
-        !shouldRestartForModelChange &&
-        !shouldRestartForModelOptionsChange
-      ) {
+      if (!providerChanged && !shouldRestartForModelChange && !shouldRestartForModelOptionsChange) {
         return existingSessionThreadId;
       }
 
@@ -335,9 +300,6 @@ const make = Effect.gen(function* () {
         existingSessionThreadId,
         currentProvider,
         desiredProvider: options?.provider ?? currentProvider,
-        currentRuntimeMode: thread.session?.runtimeMode,
-        desiredRuntimeMode: thread.runtimeMode,
-        runtimeModeChanged,
         providerChanged,
         modelChanged,
         shouldRestartForModelChange,
@@ -353,7 +315,6 @@ const make = Effect.gen(function* () {
         previousSessionId: existingSessionThreadId,
         restartedSessionThreadId: restartedSession.threadId,
         provider: restartedSession.provider,
-        runtimeMode: restartedSession.runtimeMode,
       });
       yield* bindSessionToThread(restartedSession);
       return restartedSession.threadId;
@@ -570,54 +531,6 @@ const make = Effect.gen(function* () {
     // Orchestration turn ids are not provider turn ids, so interrupt by session.
     yield* providerService.interruptTurn({ threadId: event.payload.threadId });
   });
-
-  const processApprovalResponseRequested = Effect.fnUntraced(function* (
-    event: Extract<ProviderIntentEvent, { type: "thread.approval-response-requested" }>,
-  ) {
-    const thread = yield* resolveThread(event.payload.threadId);
-    if (!thread) {
-      return;
-    }
-    const hasSession = thread.session && thread.session.status !== "stopped";
-    if (!hasSession) {
-      return yield* appendProviderFailureActivity({
-        threadId: event.payload.threadId,
-        kind: "provider.approval.respond.failed",
-        summary: "Provider approval response failed",
-        detail: "No active provider session is bound to this thread.",
-        turnId: null,
-        createdAt: event.payload.createdAt,
-        requestId: event.payload.requestId,
-      });
-    }
-
-    yield* providerService
-      .respondToRequest({
-        threadId: event.payload.threadId,
-        requestId: event.payload.requestId,
-        decision: event.payload.decision,
-      })
-      .pipe(
-        Effect.catchCause((cause) =>
-          Effect.gen(function* () {
-            yield* appendProviderFailureActivity({
-              threadId: event.payload.threadId,
-              kind: "provider.approval.respond.failed",
-              summary: "Provider approval response failed",
-              detail: isUnknownPendingApprovalRequestError(cause)
-                ? stalePendingRequestDetail("approval", event.payload.requestId)
-                : Cause.pretty(cause),
-              turnId: null,
-              createdAt: event.payload.createdAt,
-              requestId: event.payload.requestId,
-            });
-
-            if (!isUnknownPendingApprovalRequestError(cause)) return;
-          }),
-        ),
-      );
-  });
-
   const processUserInputResponseRequested = Effect.fnUntraced(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.user-input-response-requested" }>,
   ) {
@@ -680,7 +593,6 @@ const make = Effect.gen(function* () {
         threadId: thread.id,
         status: "stopped",
         providerName: thread.session?.providerName ?? null,
-        runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
         activeTurnId: null,
         lastError: thread.session?.lastError ?? null,
         updatedAt: now,
@@ -692,29 +604,11 @@ const make = Effect.gen(function* () {
   const processDomainEvent = (event: ProviderIntentEvent) =>
     Effect.gen(function* () {
       switch (event.type) {
-        case "thread.runtime-mode-set": {
-          const thread = yield* resolveThread(event.payload.threadId);
-          if (!thread?.session || thread.session.status === "stopped") {
-            return;
-          }
-          const cachedProviderOptions = threadProviderOptions.get(event.payload.threadId);
-          const cachedModelOptions = threadModelOptions.get(event.payload.threadId);
-          yield* ensureSessionForThread(event.payload.threadId, event.occurredAt, {
-            ...(cachedProviderOptions !== undefined
-              ? { providerOptions: cachedProviderOptions }
-              : {}),
-            ...(cachedModelOptions !== undefined ? { modelOptions: cachedModelOptions } : {}),
-          });
-          return;
-        }
         case "thread.turn-start-requested":
           yield* processTurnStartRequested(event);
           return;
         case "thread.turn-interrupt-requested":
           yield* processTurnInterruptRequested(event);
-          return;
-        case "thread.approval-response-requested":
-          yield* processApprovalResponseRequested(event);
           return;
         case "thread.user-input-response-requested":
           yield* processUserInputResponseRequested(event);
@@ -743,10 +637,8 @@ const make = Effect.gen(function* () {
   const start: ProviderCommandReactorShape["start"] = Effect.forkScoped(
     Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
       if (
-        event.type !== "thread.runtime-mode-set" &&
         event.type !== "thread.turn-start-requested" &&
         event.type !== "thread.turn-interrupt-requested" &&
-        event.type !== "thread.approval-response-requested" &&
         event.type !== "thread.user-input-response-requested" &&
         event.type !== "thread.session-stop-requested"
       ) {

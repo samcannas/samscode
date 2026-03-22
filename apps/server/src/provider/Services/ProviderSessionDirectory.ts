@@ -1,9 +1,4 @@
-import type {
-  ProviderKind,
-  ProviderSessionRuntimeStatus,
-  RuntimeMode,
-  ThreadId,
-} from "@samscode/contracts";
+import type { ProviderKind, ProviderSessionRuntimeStatus, ThreadId } from "@samscode/contracts";
 import { Option, ServiceMap } from "effect";
 import type { Effect } from "effect";
 
@@ -19,7 +14,6 @@ export interface ProviderRuntimeBinding {
   readonly status?: ProviderSessionRuntimeStatus;
   readonly resumeCursor?: unknown | null;
   readonly runtimePayload?: unknown | null;
-  readonly runtimeMode?: RuntimeMode;
 }
 
 export type ProviderSessionDirectoryReadError = ProviderSessionDirectoryPersistenceError;
@@ -32,19 +26,15 @@ export interface ProviderSessionDirectoryShape {
   readonly upsert: (
     binding: ProviderRuntimeBinding,
   ) => Effect.Effect<void, ProviderSessionDirectoryWriteError>;
-
   readonly getProvider: (
     threadId: ThreadId,
   ) => Effect.Effect<ProviderKind, ProviderSessionDirectoryReadError>;
-
   readonly getBinding: (
     threadId: ThreadId,
   ) => Effect.Effect<Option.Option<ProviderRuntimeBinding>, ProviderSessionDirectoryReadError>;
-
   readonly remove: (
     threadId: ThreadId,
   ) => Effect.Effect<void, ProviderSessionDirectoryPersistenceError>;
-
   readonly listThreadIds: () => Effect.Effect<
     ReadonlyArray<ThreadId>,
     ProviderSessionDirectoryPersistenceError

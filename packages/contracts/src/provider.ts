@@ -1,6 +1,4 @@
 import { Schema } from "effect";
-import { TrimmedNonEmptyString } from "./baseSchemas";
-import { ProviderModelOptions } from "./model";
 import {
   ApprovalRequestId,
   EventId,
@@ -8,20 +6,17 @@ import {
   ProviderItemId,
   ThreadId,
   TurnId,
+  TrimmedNonEmptyString,
 } from "./baseSchemas";
+import { ProviderModelOptions } from "./model";
 import {
   ChatAttachment,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-  ProviderApprovalDecision,
-  ProviderApprovalPolicy,
   ProviderInteractionMode,
   ProviderKind,
-  ProviderRequestKind,
-  ProviderSandboxMode,
   ProviderStartOptions,
   ProviderUserInputAnswers,
-  RuntimeMode,
 } from "./orchestration";
 
 const ProviderSessionStatus = Schema.Literals([
@@ -35,7 +30,6 @@ const ProviderSessionStatus = Schema.Literals([
 export const ProviderSession = Schema.Struct({
   provider: ProviderKind,
   status: ProviderSessionStatus,
-  runtimeMode: RuntimeMode,
   cwd: Schema.optional(TrimmedNonEmptyString),
   model: Schema.optional(TrimmedNonEmptyString),
   threadId: ThreadId,
@@ -54,10 +48,7 @@ export const ProviderSessionStartInput = Schema.Struct({
   model: Schema.optional(TrimmedNonEmptyString),
   modelOptions: Schema.optional(ProviderModelOptions),
   resumeCursor: Schema.optional(Schema.Unknown),
-  approvalPolicy: Schema.optional(ProviderApprovalPolicy),
-  sandboxMode: Schema.optional(ProviderSandboxMode),
   providerOptions: Schema.optional(ProviderStartOptions),
-  runtimeMode: RuntimeMode,
 });
 export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;
 
@@ -93,13 +84,6 @@ export const ProviderStopSessionInput = Schema.Struct({
 });
 export type ProviderStopSessionInput = typeof ProviderStopSessionInput.Type;
 
-export const ProviderRespondToRequestInput = Schema.Struct({
-  threadId: ThreadId,
-  requestId: ApprovalRequestId,
-  decision: ProviderApprovalDecision,
-});
-export type ProviderRespondToRequestInput = typeof ProviderRespondToRequestInput.Type;
-
 export const ProviderRespondToUserInputInput = Schema.Struct({
   threadId: ThreadId,
   requestId: ApprovalRequestId,
@@ -120,7 +104,6 @@ export const ProviderEvent = Schema.Struct({
   turnId: Schema.optional(TurnId),
   itemId: Schema.optional(ProviderItemId),
   requestId: Schema.optional(ApprovalRequestId),
-  requestKind: Schema.optional(ProviderRequestKind),
   textDelta: Schema.optional(Schema.String),
   payload: Schema.optional(Schema.Unknown),
 });

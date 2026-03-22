@@ -13,7 +13,6 @@ import {
   NonNegativeInt,
   ThreadId,
   ProviderInterruptTurnInput,
-  ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
@@ -179,7 +178,6 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       directory.upsert({
         threadId,
         provider: session.provider,
-        runtimeMode: session.runtimeMode,
         status: toRuntimeStatus(session),
         ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
         runtimePayload: toRuntimePayloadFromSession(session, extra),
@@ -241,7 +239,6 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           ...(persistedModelOptions ? { modelOptions: persistedModelOptions } : {}),
           ...(persistedProviderOptions ? { providerOptions: persistedProviderOptions } : {}),
           ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
-          runtimeMode: input.binding.runtimeMode ?? "full-access",
         });
         if (resumed.provider !== adapter.provider) {
           return yield* toValidationError(
@@ -375,22 +372,6 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         });
         yield* routed.adapter.interruptTurn(routed.threadId, input.turnId);
       });
-
-    const respondToRequest: ProviderServiceShape["respondToRequest"] = (rawInput) =>
-      Effect.gen(function* () {
-        const input = yield* decodeInputOrValidationError({
-          operation: "ProviderService.respondToRequest",
-          schema: ProviderRespondToRequestInput,
-          payload: rawInput,
-        });
-        const routed = yield* resolveRoutableSession({
-          threadId: input.threadId,
-          operation: "ProviderService.respondToRequest",
-          allowRecovery: true,
-        });
-        yield* routed.adapter.respondToRequest(routed.threadId, input.requestId, input.decision);
-      });
-
     const respondToUserInput: ProviderServiceShape["respondToUserInput"] = (rawInput) =>
       Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
@@ -459,13 +440,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
           const overrides: {
             resumeCursor?: ProviderSession["resumeCursor"];
-            runtimeMode?: ProviderSession["runtimeMode"];
           } = {};
           if (session.resumeCursor === undefined && binding.resumeCursor !== undefined) {
             overrides.resumeCursor = binding.resumeCursor;
-          }
-          if (binding.runtimeMode !== undefined) {
-            overrides.runtimeMode = binding.runtimeMode;
           }
           return Object.assign({}, session, overrides);
         });
@@ -535,7 +512,6 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       startSession,
       sendTurn,
       interruptTurn,
-      respondToRequest,
       respondToUserInput,
       stopSession,
       listSessions,

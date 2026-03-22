@@ -7,16 +7,13 @@ import {
   ApprovalRequestId,
   EventId,
   ProviderItemId,
-  ProviderRequestKind,
   type ProviderUserInputAnswers,
   ThreadId,
   TurnId,
-  type ProviderApprovalDecision,
   type ProviderEvent,
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderTurnStartResult,
-  RuntimeMode,
   ProviderInteractionMode,
 } from "@samscode/contracts";
 import { normalizeModelSlug } from "@samscode/shared/model";
@@ -38,19 +35,6 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
-interface PendingApprovalRequest {
-  requestId: ApprovalRequestId;
-  jsonRpcId: string | number;
-  method:
-    | "item/commandExecution/requestApproval"
-    | "item/fileChange/requestApproval"
-    | "item/fileRead/requestApproval";
-  requestKind: ProviderRequestKind;
-  threadId: ThreadId;
-  turnId?: TurnId;
-  itemId?: ProviderItemId;
-}
-
 interface PendingUserInputRequest {
   requestId: ApprovalRequestId;
   jsonRpcId: string | number;
@@ -69,7 +53,6 @@ interface CodexSessionContext {
   child: ChildProcessWithoutNullStreams;
   output: readline.Interface;
   pending: Map<PendingRequestKey, PendingRequest>;
-  pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>;
   pendingUserInputs: Map<ApprovalRequestId, PendingUserInputRequest>;
   collabReceiverTurns: Map<string, TurnId>;
   nextRequestId: number;
@@ -133,7 +116,6 @@ export interface CodexAppServerStartSessionInput {
   readonly serviceTier?: string;
   readonly resumeCursor?: unknown;
   readonly providerOptions?: ProviderSessionStartInput["providerOptions"];
-  readonly runtimeMode: RuntimeMode;
 }
 
 export interface CodexThreadTurnSnapshot {
@@ -342,23 +324,6 @@ The \`request_user_input\` tool is unavailable in Default mode. If you call it w
 In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, ask the user directly with a concise plain-text question. Never write a multiple choice question as a textual assistant message.
 </collaboration_mode>`;
 
-function mapCodexRuntimeMode(runtimeMode: RuntimeMode): {
-  readonly approvalPolicy: "on-request" | "never";
-  readonly sandbox: "workspace-write" | "danger-full-access";
-} {
-  if (runtimeMode === "approval-required") {
-    return {
-      approvalPolicy: "on-request",
-      sandbox: "workspace-write",
-    };
-  }
-
-  return {
-    approvalPolicy: "never",
-    sandbox: "danger-full-access",
-  };
-}
-
 export function resolveCodexModelForAccount(
   model: string | undefined,
   account: CodexAccountSnapshot,
@@ -535,7 +500,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       const session: ProviderSession = {
         provider: "codex",
         status: "connecting",
-        runtimeMode: input.runtimeMode,
         model: normalizeCodexModelSlug(input.model),
         cwd: resolvedCwd,
         threadId,
@@ -576,7 +540,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         child,
         output,
         pending: new Map(),
-        pendingApprovals: new Map(),
         pendingUserInputs: new Map(),
         collabReceiverTurns: new Map(),
         nextRequestId: 1,
@@ -618,7 +581,8 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         model: normalizedModel ?? null,
         ...(input.serviceTier !== undefined ? { serviceTier: input.serviceTier } : {}),
         cwd: input.cwd ?? null,
-        ...mapCodexRuntimeMode(input.runtimeMode ?? "full-access"),
+        approvalPolicy: "never" as const,
+        sandbox: "danger-full-access" as const,
       };
 
       const threadStartParams = {
@@ -635,7 +599,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       );
       await Effect.logInfo("codex app-server opening thread", {
         threadId,
-        requestedRuntimeMode: input.runtimeMode,
         requestedModel: normalizedModel ?? null,
         requestedCwd: resolvedCwd,
         resumeThreadId: resumeThreadId ?? null,
@@ -659,7 +622,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
             );
             await Effect.logWarning("codex app-server thread resume failed", {
               threadId,
-              requestedRuntimeMode: input.runtimeMode,
               resumeThreadId,
               recoverable: false,
               cause: error instanceof Error ? error.message : String(error),
@@ -675,7 +637,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
           );
           await Effect.logWarning("codex app-server thread resume fell back to fresh start", {
             threadId,
-            requestedRuntimeMode: input.runtimeMode,
             resumeThreadId,
             recoverable: true,
             cause: error instanceof Error ? error.message : String(error),
@@ -710,7 +671,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         threadOpenMethod,
         requestedResumeThreadId: resumeThreadId ?? null,
         resolvedThreadId: providerThreadId,
-        requestedRuntimeMode: input.runtimeMode,
       }).pipe(this.runPromise);
       this.emitLifecycleEvent(context, "session/ready", `Connected to thread ${providerThreadId}`);
       return { ...context.session };
@@ -765,8 +725,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     const providerThreadId = readResumeThreadId({
-      threadId: context.session.threadId,
-      runtimeMode: context.session.runtimeMode,
       resumeCursor: context.session.resumeCursor,
     });
     if (!providerThreadId) {
@@ -848,8 +806,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     const effectiveTurnId = turnId ?? context.session.activeTurnId;
 
     const providerThreadId = readResumeThreadId({
-      threadId: context.session.threadId,
-      runtimeMode: context.session.runtimeMode,
       resumeCursor: context.session.resumeCursor,
     });
     if (!effectiveTurnId || !providerThreadId) {
@@ -865,8 +821,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   async readThread(threadId: ThreadId): Promise<CodexThreadSnapshot> {
     const context = this.requireSession(threadId);
     const providerThreadId = readResumeThreadId({
-      threadId: context.session.threadId,
-      runtimeMode: context.session.runtimeMode,
       resumeCursor: context.session.resumeCursor,
     });
     if (!providerThreadId) {
@@ -883,8 +837,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   async rollbackThread(threadId: ThreadId, numTurns: number): Promise<CodexThreadSnapshot> {
     const context = this.requireSession(threadId);
     const providerThreadId = readResumeThreadId({
-      threadId: context.session.threadId,
-      runtimeMode: context.session.runtimeMode,
       resumeCursor: context.session.resumeCursor,
     });
     if (!providerThreadId) {
@@ -903,44 +855,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       activeTurnId: undefined,
     });
     return this.parseThreadSnapshot("thread/rollback", response);
-  }
-
-  async respondToRequest(
-    threadId: ThreadId,
-    requestId: ApprovalRequestId,
-    decision: ProviderApprovalDecision,
-  ): Promise<void> {
-    const context = this.requireSession(threadId);
-    const pendingRequest = context.pendingApprovals.get(requestId);
-    if (!pendingRequest) {
-      throw new Error(`Unknown pending approval request: ${requestId}`);
-    }
-
-    context.pendingApprovals.delete(requestId);
-    this.writeMessage(context, {
-      id: pendingRequest.jsonRpcId,
-      result: {
-        decision,
-      },
-    });
-
-    this.emitEvent({
-      id: EventId.makeUnsafe(randomUUID()),
-      kind: "notification",
-      provider: "codex",
-      threadId: context.session.threadId,
-      createdAt: new Date().toISOString(),
-      method: "item/requestApproval/decision",
-      turnId: pendingRequest.turnId,
-      itemId: pendingRequest.itemId,
-      requestId: pendingRequest.requestId,
-      requestKind: pendingRequest.requestKind,
-      payload: {
-        requestId: pendingRequest.requestId,
-        requestKind: pendingRequest.requestKind,
-        decision,
-      },
-    });
   }
 
   async respondToUserInput(
@@ -993,7 +907,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       pending.reject(new Error("Session stopped before request completed."));
     }
     context.pending.clear();
-    context.pendingApprovals.clear();
     context.pendingUserInputs.clear();
 
     context.output.close();
@@ -1216,27 +1129,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     const rawRoute = this.readRouteFields(request.params);
     const childParentTurnId = this.readChildParentTurnId(context, request.params);
     const effectiveTurnId = childParentTurnId ?? rawRoute.turnId;
-    const requestKind = this.requestKindForMethod(request.method);
     let requestId: ApprovalRequestId | undefined;
-    if (requestKind) {
-      requestId = ApprovalRequestId.makeUnsafe(randomUUID());
-      const pendingRequest: PendingApprovalRequest = {
-        requestId,
-        jsonRpcId: request.id,
-        method:
-          requestKind === "command"
-            ? "item/commandExecution/requestApproval"
-            : requestKind === "file-read"
-              ? "item/fileRead/requestApproval"
-              : "item/fileChange/requestApproval",
-        requestKind,
-        threadId: context.session.threadId,
-        ...(effectiveTurnId ? { turnId: effectiveTurnId } : {}),
-        ...(rawRoute.itemId ? { itemId: rawRoute.itemId } : {}),
-      };
-      context.pendingApprovals.set(requestId, pendingRequest);
-    }
-
     if (request.method === "item/tool/requestUserInput") {
       requestId = ApprovalRequestId.makeUnsafe(randomUUID());
       context.pendingUserInputs.set(requestId, {
@@ -1258,14 +1151,8 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       ...(effectiveTurnId ? { turnId: effectiveTurnId } : {}),
       ...(rawRoute.itemId ? { itemId: rawRoute.itemId } : {}),
       requestId,
-      requestKind,
       payload: request.params,
     });
-
-    if (requestKind) {
-      return;
-    }
-
     if (request.method === "item/tool/requestUserInput") {
       return;
     }
@@ -1379,22 +1266,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       ...updates,
       updatedAt: new Date().toISOString(),
     };
-  }
-
-  private requestKindForMethod(method: string): ProviderRequestKind | undefined {
-    if (method === "item/commandExecution/requestApproval") {
-      return "command";
-    }
-
-    if (method === "item/fileRead/requestApproval") {
-      return "file-read";
-    }
-
-    if (method === "item/fileChange/requestApproval") {
-      return "file-change";
-    }
-
-    return undefined;
   }
 
   private parseThreadSnapshot(method: string, response: unknown): CodexThreadSnapshot {
@@ -1669,7 +1540,7 @@ function readResumeCursorThreadId(resumeCursor: unknown): string | undefined {
   return typeof rawThreadId === "string" ? normalizeProviderThreadId(rawThreadId) : undefined;
 }
 
-function readResumeThreadId(input: CodexAppServerStartSessionInput): string | undefined {
+function readResumeThreadId(input: { readonly resumeCursor?: unknown }): string | undefined {
   return readResumeCursorThreadId(input.resumeCursor);
 }
 

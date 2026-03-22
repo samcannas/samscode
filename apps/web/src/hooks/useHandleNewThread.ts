@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME_MODE, type ProjectId, ThreadId } from "@samscode/contracts";
+import { type ProjectId, ThreadId } from "@samscode/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback } from "react";
 import { inferProviderForModel } from "@samscode/shared/model";
@@ -100,7 +100,6 @@ export function useHandleNewThread() {
           branch: options?.branch ?? null,
           worktreePath: options?.worktreePath ?? null,
           envMode: options?.envMode ?? "local",
-          runtimeMode: DEFAULT_RUNTIME_MODE,
         });
         if (stickyModel) {
           setProvider(threadId, inferProviderForModel(stickyModel));

@@ -92,18 +92,6 @@ export default Effect.gen(function* () {
   `;
 
   yield* sql`
-    CREATE TABLE IF NOT EXISTS projection_pending_approvals (
-      request_id TEXT PRIMARY KEY,
-      thread_id TEXT NOT NULL,
-      turn_id TEXT,
-      status TEXT NOT NULL,
-      decision TEXT,
-      created_at TEXT NOT NULL,
-      resolved_at TEXT
-    )
-  `;
-
-  yield* sql`
     CREATE TABLE IF NOT EXISTS projection_state (
       projector TEXT PRIMARY KEY,
       last_applied_sequence INTEGER NOT NULL,
@@ -144,10 +132,5 @@ export default Effect.gen(function* () {
   yield* sql`
     CREATE INDEX IF NOT EXISTS idx_projection_turns_thread_checkpoint_completed
     ON projection_turns(thread_id, checkpoint_turn_count, completed_at)
-  `;
-
-  yield* sql`
-    CREATE INDEX IF NOT EXISTS idx_projection_pending_approvals_thread_status
-    ON projection_pending_approvals(thread_id, status)
   `;
 });
