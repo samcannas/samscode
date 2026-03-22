@@ -8,6 +8,9 @@ import {
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
 export type SidebarNewThreadEnvMode = "local" | "worktree";
+export type ProjectAddTriggerMode = "browse" | "toggle-manual";
+export type ProjectAddOrigin = "picker" | "manual";
+export type ProjectAddErrorPresentation = "toast" | "inline";
 
 export interface ThreadStatusPill {
   label: "Working" | "Connecting" | "Completed" | "Awaiting Input" | "Plan Ready";
@@ -50,6 +53,55 @@ export function resolveSidebarNewThreadEnvMode(input: {
   defaultEnvMode: SidebarNewThreadEnvMode;
 }): SidebarNewThreadEnvMode {
   return input.requestedEnvMode ?? input.defaultEnvMode;
+}
+
+export function resolveProjectAddTriggerMode(input: {
+  hasNativeProjectFolderPicker: boolean;
+}): ProjectAddTriggerMode {
+  return input.hasNativeProjectFolderPicker ? "browse" : "toggle-manual";
+}
+
+export function shouldShowProjectAddByPathButton(input: {
+  hasNativeProjectFolderPicker: boolean;
+}): boolean {
+  return input.hasNativeProjectFolderPicker;
+}
+
+export function resolveProjectAddButtonLabel(input: {
+  triggerMode: ProjectAddTriggerMode;
+  isManualEntryOpen: boolean;
+}): string {
+  if (input.triggerMode === "browse") {
+    return "Browse for project folder";
+  }
+  return input.isManualEntryOpen ? "Cancel add project" : "Add project";
+}
+
+export function resolveProjectAddTooltipLabel(input: {
+  triggerMode: ProjectAddTriggerMode;
+  isManualEntryOpen: boolean;
+}): string {
+  return resolveProjectAddButtonLabel(input);
+}
+
+export function resolveProjectAddButtonPressed(input: {
+  triggerMode: ProjectAddTriggerMode;
+  isManualEntryOpen: boolean;
+}): boolean {
+  return input.triggerMode === "toggle-manual" && input.isManualEntryOpen;
+}
+
+export function shouldRotateProjectAddIcon(input: {
+  triggerMode: ProjectAddTriggerMode;
+  isManualEntryOpen: boolean;
+}): boolean {
+  return input.triggerMode === "toggle-manual" && input.isManualEntryOpen;
+}
+
+export function resolveProjectAddErrorPresentation(input: {
+  origin: ProjectAddOrigin;
+}): ProjectAddErrorPresentation {
+  return input.origin === "picker" ? "toast" : "inline";
 }
 
 export function resolveThreadRowClassName(input: {

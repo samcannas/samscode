@@ -2,11 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasUnseenCompletion,
+  resolveProjectAddButtonLabel,
+  resolveProjectAddButtonPressed,
+  resolveProjectAddErrorPresentation,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadEnvMode,
+  resolveProjectAddTooltipLabel,
+  resolveProjectAddTriggerMode,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  shouldRotateProjectAddIcon,
   shouldClearThreadSelectionOnMouseDown,
+  shouldShowProjectAddByPathButton,
 } from "./Sidebar.logic";
 
 function makeLatestTurn(overrides?: {
@@ -81,6 +88,110 @@ describe("resolveSidebarNewThreadEnvMode", () => {
         defaultEnvMode: "worktree",
       }),
     ).toBe("local");
+  });
+});
+
+describe("project add controls", () => {
+  it("uses browse mode when a native picker is available", () => {
+    expect(
+      resolveProjectAddTriggerMode({
+        hasNativeProjectFolderPicker: true,
+      }),
+    ).toBe("browse");
+  });
+
+  it("uses manual-toggle mode when no native picker is available", () => {
+    expect(
+      resolveProjectAddTriggerMode({
+        hasNativeProjectFolderPicker: false,
+      }),
+    ).toBe("toggle-manual");
+  });
+
+  it("shows the add-by-path fallback button only when browse is primary", () => {
+    expect(
+      shouldShowProjectAddByPathButton({
+        hasNativeProjectFolderPicker: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowProjectAddByPathButton({
+        hasNativeProjectFolderPicker: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("uses browse labeling when the primary action is folder picking", () => {
+    expect(
+      resolveProjectAddButtonLabel({
+        triggerMode: "browse",
+        isManualEntryOpen: false,
+      }),
+    ).toBe("Browse for project folder");
+    expect(
+      resolveProjectAddTooltipLabel({
+        triggerMode: "browse",
+        isManualEntryOpen: true,
+      }),
+    ).toBe("Browse for project folder");
+  });
+
+  it("preserves add and cancel labels for manual-toggle mode", () => {
+    expect(
+      resolveProjectAddButtonLabel({
+        triggerMode: "toggle-manual",
+        isManualEntryOpen: false,
+      }),
+    ).toBe("Add project");
+    expect(
+      resolveProjectAddButtonLabel({
+        triggerMode: "toggle-manual",
+        isManualEntryOpen: true,
+      }),
+    ).toBe("Cancel add project");
+  });
+
+  it("only treats the button as pressed in manual-toggle mode", () => {
+    expect(
+      resolveProjectAddButtonPressed({
+        triggerMode: "browse",
+        isManualEntryOpen: true,
+      }),
+    ).toBe(false);
+    expect(
+      resolveProjectAddButtonPressed({
+        triggerMode: "toggle-manual",
+        isManualEntryOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("only rotates the plus icon in manual-toggle mode", () => {
+    expect(
+      shouldRotateProjectAddIcon({
+        triggerMode: "browse",
+        isManualEntryOpen: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRotateProjectAddIcon({
+        triggerMode: "toggle-manual",
+        isManualEntryOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows picker errors in a toast and manual errors inline", () => {
+    expect(
+      resolveProjectAddErrorPresentation({
+        origin: "picker",
+      }),
+    ).toBe("toast");
+    expect(
+      resolveProjectAddErrorPresentation({
+        origin: "manual",
+      }),
+    ).toBe("inline");
   });
 });
 

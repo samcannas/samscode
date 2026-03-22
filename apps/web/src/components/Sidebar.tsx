@@ -3,6 +3,7 @@ import {
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
+  KeyboardIcon,
   PlusIcon,
   RocketIcon,
   SettingsIcon,
@@ -39,7 +40,8 @@ import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
-import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
+import { isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
+import { hasNativeProjectFolderPicker, pickProjectFolder } from "../projectFolderPicker";
 import { useStore } from "../store";
 import { shortcutLabelForCommand } from "../keybindings";
 import { derivePendingUserInputs } from "../session-logic";
@@ -84,11 +86,18 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
+  resolveProjectAddButtonLabel,
+  resolveProjectAddButtonPressed,
+  resolveProjectAddErrorPresentation,
   resolveProjectStatusIndicator,
+  resolveProjectAddTooltipLabel,
+  resolveProjectAddTriggerMode,
   resolveSidebarNewThreadEnvMode,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  shouldRotateProjectAddIcon,
   shouldClearThreadSelectionOnMouseDown,
+  shouldShowProjectAddByPathButton,
 } from "./Sidebar.logic";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
@@ -298,9 +307,14 @@ export default function Sidebar() {
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
-  const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
-  const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop;
-  const shouldShowProjectPathEntry = addingProject && !shouldBrowseForProjectImmediately;
+  const hasNativeFolderPicker = hasNativeProjectFolderPicker();
+  const projectAddTriggerMode = resolveProjectAddTriggerMode({
+    hasNativeProjectFolderPicker: hasNativeFolderPicker,
+  });
+  const shouldShowAddByPathButton = shouldShowProjectAddByPathButton({
+    hasNativeProjectFolderPicker: hasNativeFolderPicker,
+  });
+  const shouldShowProjectPathEntry = addingProject;
   const projectCwdById = useMemo(
     () => new Map(projects.map((project) => [project.id, project.cwd] as const)),
     [projects],
@@ -395,7 +409,7 @@ export default function Sidebar() {
   );
 
   const addProjectFromPath = useCallback(
-    async (rawCwd: string) => {
+    async (rawCwd: string, origin: "picker" | "manual") => {
       const cwd = rawCwd.trim();
       if (!cwd || isAddingProject) return;
       const api = readNativeApi();
@@ -436,7 +450,7 @@ export default function Sidebar() {
         const description =
           error instanceof Error ? error.message : "An error occurred while adding the project.";
         setIsAddingProject(false);
-        if (shouldBrowseForProjectImmediately) {
+        if (resolveProjectAddErrorPresentation({ origin }) === "toast") {
           toastManager.add({
             type: "error",
             title: "Failed to add project",
@@ -454,41 +468,49 @@ export default function Sidebar() {
       handleNewThread,
       isAddingProject,
       projects,
-      shouldBrowseForProjectImmediately,
       appSettings.defaultThreadEnvMode,
     ],
   );
 
   const handleAddProject = () => {
-    void addProjectFromPath(newCwd);
+    void addProjectFromPath(newCwd, "manual");
   };
 
   const canAddProject = newCwd.trim().length > 0 && !isAddingProject;
 
   const handlePickFolder = async () => {
-    const api = readNativeApi();
-    if (!api || isPickingFolder) return;
+    if (isPickingFolder || isAddingProject) return;
     setIsPickingFolder(true);
-    let pickedPath: string | null = null;
     try {
-      pickedPath = await api.dialogs.pickFolder();
-    } catch {
-      // Ignore picker failures and leave the current thread selection unchanged.
+      const pickedPath = await pickProjectFolder();
+      if (pickedPath) {
+        await addProjectFromPath(pickedPath, "picker");
+      }
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to open folder picker",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An error occurred while opening the folder picker.",
+      });
+    } finally {
+      setIsPickingFolder(false);
     }
-    if (pickedPath) {
-      await addProjectFromPath(pickedPath);
-    } else if (!shouldBrowseForProjectImmediately) {
-      addProjectInputRef.current?.focus();
-    }
-    setIsPickingFolder(false);
   };
 
   const handleStartAddProject = () => {
     setAddProjectError(null);
-    if (shouldBrowseForProjectImmediately) {
+    if (projectAddTriggerMode === "browse") {
       void handlePickFolder();
       return;
     }
+    setAddingProject((prev) => !prev);
+  };
+
+  const handleToggleAddProjectPathEntry = () => {
+    setAddProjectError(null);
     setAddingProject((prev) => !prev);
   };
 
@@ -1166,27 +1188,30 @@ export default function Sidebar() {
     <>
       {isElectron ? (
         <>
-          <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 pl-[90px]">
-            {wordmark}
-            {showDesktopUpdateButton && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={desktopUpdateTooltip}
-                      aria-disabled={desktopUpdateButtonDisabled || undefined}
-                      disabled={desktopUpdateButtonDisabled}
-                      className={`inline-flex size-7 ml-auto mt-1.5 items-center justify-center rounded-md text-muted-foreground transition-colors ${desktopUpdateButtonInteractivityClasses} ${desktopUpdateButtonClasses}`}
-                      onClick={handleDesktopUpdateButtonClick}
-                    >
-                      <RocketIcon className="size-3.5" />
-                    </button>
-                  }
-                />
-                <TooltipPopup side="bottom">{desktopUpdateTooltip}</TooltipPopup>
-              </Tooltip>
-            )}
+          <SidebarHeader className="drag-region grid h-[52px] grid-cols-[72px_minmax(0,1fr)_72px] items-center px-4 py-0">
+            <div aria-hidden="true" />
+            <div className="flex min-w-0 justify-center">{wordmark}</div>
+            <div className="flex justify-end">
+              {showDesktopUpdateButton && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={desktopUpdateTooltip}
+                        aria-disabled={desktopUpdateButtonDisabled || undefined}
+                        disabled={desktopUpdateButtonDisabled}
+                        className={`inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors ${desktopUpdateButtonInteractivityClasses} ${desktopUpdateButtonClasses}`}
+                        onClick={handleDesktopUpdateButtonClick}
+                      >
+                        <RocketIcon className="size-3.5" />
+                      </button>
+                    }
+                  />
+                  <TooltipPopup side="bottom">{desktopUpdateTooltip}</TooltipPopup>
+                </Tooltip>
+              )}
+            </div>
           </SidebarHeader>
         </>
       ) : (
@@ -1224,43 +1249,78 @@ export default function Sidebar() {
             <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
               Projects
             </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
-                    aria-pressed={shouldShowProjectPathEntry}
-                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={handleStartAddProject}
+            <div className="ml-auto flex items-center gap-1">
+              {shouldShowAddByPathButton && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={
+                          shouldShowProjectPathEntry
+                            ? "Cancel add project by path"
+                            : "Add project by path"
+                        }
+                        aria-pressed={shouldShowProjectPathEntry}
+                        className={`inline-flex size-5 cursor-pointer items-center justify-center rounded-md transition-colors ${
+                          shouldShowProjectPathEntry
+                            ? "bg-secondary text-foreground/80 hover:bg-accent hover:text-foreground"
+                            : "text-muted-foreground/60 hover:bg-accent hover:text-foreground"
+                        }`}
+                        onClick={handleToggleAddProjectPathEntry}
+                      />
+                    }
+                  >
+                    <KeyboardIcon className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipPopup side="right">
+                    {shouldShowProjectPathEntry
+                      ? "Cancel add project by path"
+                      : "Add project by path"}
+                  </TooltipPopup>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={resolveProjectAddButtonLabel({
+                        triggerMode: projectAddTriggerMode,
+                        isManualEntryOpen: shouldShowProjectPathEntry,
+                      })}
+                      aria-pressed={resolveProjectAddButtonPressed({
+                        triggerMode: projectAddTriggerMode,
+                        isManualEntryOpen: shouldShowProjectPathEntry,
+                      })}
+                      className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                      onClick={handleStartAddProject}
+                    />
+                  }
+                >
+                  <PlusIcon
+                    className={`size-3.5 transition-transform duration-150 ${
+                      shouldRotateProjectAddIcon({
+                        triggerMode: projectAddTriggerMode,
+                        isManualEntryOpen: shouldShowProjectPathEntry,
+                      })
+                        ? "rotate-45"
+                        : "rotate-0"
+                    }`}
                   />
-                }
-              >
-                <PlusIcon
-                  className={`size-3.5 transition-transform duration-150 ${
-                    shouldShowProjectPathEntry ? "rotate-45" : "rotate-0"
-                  }`}
-                />
-              </TooltipTrigger>
-              <TooltipPopup side="right">
-                {shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
-              </TooltipPopup>
-            </Tooltip>
+                </TooltipTrigger>
+                <TooltipPopup side="right">
+                  {resolveProjectAddTooltipLabel({
+                    triggerMode: projectAddTriggerMode,
+                    isManualEntryOpen: shouldShowProjectPathEntry,
+                  })}
+                </TooltipPopup>
+              </Tooltip>
+            </div>
           </div>
 
           {shouldShowProjectPathEntry && (
             <div className="mb-2 px-1">
-              {isElectron && (
-                <button
-                  type="button"
-                  className="mb-1.5 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary py-1.5 text-xs text-foreground/80 transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => void handlePickFolder()}
-                  disabled={isPickingFolder || isAddingProject}
-                >
-                  <FolderIcon className="size-3.5" />
-                  {isPickingFolder ? "Picking folder..." : "Browse for folder"}
-                </button>
-              )}
               <div className="flex gap-1.5">
                 <input
                   ref={addProjectInputRef}

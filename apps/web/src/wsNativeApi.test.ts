@@ -118,6 +118,32 @@ afterEach(() => {
 });
 
 describe("wsNativeApi", () => {
+  it("uses the desktop bridge for folder picking when available", async () => {
+    const pickFolder = vi.fn().mockResolvedValue("/tmp/workspace");
+    Object.defineProperty(getWindowForTest(), "desktopBridge", {
+      configurable: true,
+      writable: true,
+      value: {
+        pickFolder,
+      },
+    });
+
+    const { createWsNativeApi } = await import("./wsNativeApi");
+    const api = createWsNativeApi();
+
+    await expect(api.dialogs.pickFolder()).resolves.toBe("/tmp/workspace");
+    expect(pickFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null for folder picking when the desktop bridge is unavailable", async () => {
+    Reflect.deleteProperty(getWindowForTest(), "desktopBridge");
+
+    const { createWsNativeApi } = await import("./wsNativeApi");
+    const api = createWsNativeApi();
+
+    await expect(api.dialogs.pickFolder()).resolves.toBeNull();
+  });
+
   it("delivers and caches valid server.welcome payloads", async () => {
     const { createWsNativeApi, onServerWelcome } = await import("./wsNativeApi");
 
@@ -380,5 +406,31 @@ describe("wsNativeApi", () => {
       [{ id: "delete", label: "Delete", destructive: true }],
       { x: 20, y: 30 },
     );
+  });
+
+  it("delegates dialogs.pickFolder to the desktop bridge when available", async () => {
+    const pickFolder = vi.fn().mockResolvedValue("/tmp/project");
+    Object.defineProperty(getWindowForTest(), "desktopBridge", {
+      configurable: true,
+      writable: true,
+      value: {
+        pickFolder,
+      },
+    });
+
+    const { createWsNativeApi } = await import("./wsNativeApi");
+    const api = createWsNativeApi();
+
+    await expect(api.dialogs.pickFolder()).resolves.toBe("/tmp/project");
+    expect(pickFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null from dialogs.pickFolder when no desktop bridge is available", async () => {
+    Reflect.deleteProperty(getWindowForTest(), "desktopBridge");
+
+    const { createWsNativeApi } = await import("./wsNativeApi");
+    const api = createWsNativeApi();
+
+    await expect(api.dialogs.pickFolder()).resolves.toBeNull();
   });
 });
