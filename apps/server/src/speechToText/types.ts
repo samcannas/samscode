@@ -67,6 +67,9 @@ export interface SpeechToTextSessionRecord {
   utteranceBuffers: Buffer[];
   utteranceDurationMs: number;
   previewQueuedAtMs: number;
+  previewInFlight: boolean;
+  previewPending: boolean;
+  completionPublished: boolean;
   finalizeChain: Promise<void>;
   lastError: string | null;
 }

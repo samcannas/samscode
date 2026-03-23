@@ -2,9 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import type { SpeechToTextMutableState, SpeechToTextPaths } from "./types";
-
-const VAD_RESOURCE_ID = "ggml-silero-v5.1.2.bin";
+import type { SpeechToTextPaths } from "./types";
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_VAD_MODEL_CANDIDATES = [
   path.resolve(MODULE_DIR, "../../resources/vad/ggml-silero-v5.1.2.bin"),
@@ -18,8 +16,6 @@ async function fileExists(candidatePath: string): Promise<boolean> {
 
 export async function ensureVadModelInstalled(input: {
   paths: SpeechToTextPaths;
-  mutableState: SpeechToTextMutableState;
-  publishState: () => Promise<unknown>;
 }): Promise<string> {
   if (await fileExists(input.paths.vadModelPath)) {
     return input.paths.vadModelPath;
@@ -29,18 +25,9 @@ export async function ensureVadModelInstalled(input: {
     if (!(await fileExists(candidatePath))) {
       continue;
     }
-    input.mutableState.activeDownload = {
-      type: "resource",
-      resourceId: VAD_RESOURCE_ID,
-      phase: "completed",
-      downloadedBytes: 0,
-      totalBytes: null,
-      message: "Using bundled voice activity detector",
-    };
-    await input.publishState();
-    input.mutableState.activeDownload = null;
-    await input.publishState();
-    return candidatePath;
+    await fs.mkdir(path.dirname(input.paths.vadModelPath), { recursive: true });
+    await fs.copyFile(candidatePath, input.paths.vadModelPath);
+    return input.paths.vadModelPath;
   }
 
   throw new Error(

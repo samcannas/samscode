@@ -180,6 +180,17 @@ function getPromptForSettings(settings: SpeechToTextSettings): string {
   return settings.prompt.trim();
 }
 
+function supportsLivePartialPreview(modelId: string | null): boolean {
+  if (!modelId) {
+    return false;
+  }
+  const model = getSpeechToTextCatalogEntry(modelId);
+  if (!model) {
+    return false;
+  }
+  return model.sizeBytes <= 250 * 1024 * 1024;
+}
+
 function createEmptySessionRecord(id: string): SpeechToTextSessionRecord {
   return {
     id,
@@ -196,6 +207,9 @@ function createEmptySessionRecord(id: string): SpeechToTextSessionRecord {
     utteranceBuffers: [],
     utteranceDurationMs: 0,
     previewQueuedAtMs: 0,
+    previewInFlight: false,
+    previewPending: false,
+    completionPublished: false,
     finalizeChain: Promise.resolve(),
     lastError: null,
   };
@@ -456,9 +470,7 @@ export const makeSpeechToText = Effect.gen(function* () {
     const language = getLanguageForModel(config.settings, selectedModelId);
     const prompt = getPromptForSettings(config.settings);
     const vadModelPath = config.settings.useVad
-      ? await downloadMutex.run(() =>
-          ensureVadModelInstalled({ paths, mutableState, publishState: () => publishState() }),
-        )
+      ? await downloadMutex.run(() => ensureVadModelInstalled({ paths }))
       : undefined;
 
     return {
@@ -544,6 +556,7 @@ export const makeSpeechToText = Effect.gen(function* () {
       session.utteranceBuffers = [];
       session.utteranceDurationMs = 0;
       session.partialText = "";
+      session.previewPending = false;
       return null;
     }
 
@@ -558,20 +571,26 @@ export const makeSpeechToText = Effect.gen(function* () {
     session.utteranceBuffers = [];
     session.utteranceDurationMs = 0;
     session.partialText = "";
+    session.previewPending = false;
     return utterance;
   };
 
   const maybeCompleteStoppingSession = (sessionId: string): void => {
     void (async () => {
       const session = sessions.get(sessionId);
-      if (!session || !session.isStopping) {
+      if (!session || !session.isStopping || session.completionPublished) {
         return;
       }
 
       const finalizeChain = session.finalizeChain;
       await finalizeChain.catch(() => undefined);
       const latest = sessions.get(sessionId);
-      if (!latest || !latest.isStopping || latest.finalizeChain !== finalizeChain) {
+      if (
+        !latest ||
+        !latest.isStopping ||
+        latest.finalizeChain !== finalizeChain ||
+        latest.completionPublished
+      ) {
         return;
       }
 
@@ -580,6 +599,8 @@ export const makeSpeechToText = Effect.gen(function* () {
       }
 
       const finalText = latest.committedSegments.join(" ").replace(/\s+/g, " ").trim();
+      latest.completionPublished = true;
+
       if (finalText.length > 0) {
         const finalEvent: SpeechToTextSessionFinalEvent = {
           type: "final",
@@ -654,6 +675,9 @@ export const makeSpeechToText = Effect.gen(function* () {
   };
 
   const queuePartialPreview = (session: SpeechToTextSessionRecord): void => {
+    if (session.isStopping) {
+      return;
+    }
     const now = Date.now();
     if (now - session.previewQueuedAtMs < PREVIEW_INTERVAL_MS) {
       return;
@@ -662,6 +686,11 @@ export const makeSpeechToText = Effect.gen(function* () {
       return;
     }
     session.previewQueuedAtMs = now;
+    if (session.previewInFlight) {
+      session.previewPending = true;
+      return;
+    }
+    session.previewInFlight = true;
     const snapshotBuffers = [...session.utteranceBuffers];
     const snapshotSegmentIndex = session.segmentIndex;
 
@@ -685,7 +714,20 @@ export const makeSpeechToText = Effect.gen(function* () {
         };
         await publishSessionEvent(event);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        const latest = sessions.get(session.id);
+        if (!latest) {
+          return;
+        }
+        latest.previewInFlight = false;
+        if (!latest.previewPending || latest.isStopping) {
+          latest.previewPending = false;
+          return;
+        }
+        latest.previewPending = false;
+        queuePartialPreview(latest);
+      });
   };
 
   return {
@@ -863,7 +905,8 @@ export const makeSpeechToText = Effect.gen(function* () {
 
         const chunk = decodePcmBase64(input.pcmBase64);
         const rms = calculateChunkRms(chunk);
-        const settings = (await loadResolvedConfig()).settings;
+        const config = await loadResolvedConfig();
+        const settings = config.settings;
         const hasSpeech = isSpeechChunk({
           rms,
           alreadyDetectedSpeech: session.detectedSpeech,
@@ -875,7 +918,10 @@ export const makeSpeechToText = Effect.gen(function* () {
           session.silenceDurationMs = 0;
           session.utteranceBuffers.push(chunk);
           session.utteranceDurationMs += input.durationMs;
-          if (settings.partialTranscriptsEnabled) {
+          if (
+            settings.partialTranscriptsEnabled &&
+            supportsLivePartialPreview(config.selectedModelId)
+          ) {
             queuePartialPreview(session);
           }
           return;
@@ -888,7 +934,10 @@ export const makeSpeechToText = Effect.gen(function* () {
         session.silenceDurationMs += input.durationMs;
         session.utteranceBuffers.push(chunk);
         session.utteranceDurationMs += input.durationMs;
-        if (settings.partialTranscriptsEnabled) {
+        if (
+          settings.partialTranscriptsEnabled &&
+          supportsLivePartialPreview(config.selectedModelId)
+        ) {
           queuePartialPreview(session);
         }
 
@@ -915,6 +964,7 @@ export const makeSpeechToText = Effect.gen(function* () {
         }
 
         session.isStopping = true;
+        session.previewPending = false;
         const utterance = takeUtterance(session);
         if (utterance) {
           queueFinalizeUtterance(session, utterance.buffers, utterance.segmentIndex);
