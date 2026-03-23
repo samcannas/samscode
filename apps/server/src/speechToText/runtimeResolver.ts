@@ -14,10 +14,13 @@ const RUNTIME_MANIFEST_FILE_NAME = "runtime-manifest.json";
 export function resolveSpeechToTextPaths(stateDir: string): SpeechToTextPaths {
   const rootDir = path.join(stateDir, "speech-to-text");
   const runtimePlatformDir = path.join(rootDir, "runtime", `${process.platform}-${process.arch}`);
+  const resourcesDir = path.join(rootDir, "resources");
   return {
     rootDir,
     configPath: path.join(rootDir, "config.json"),
     modelsDir: path.join(rootDir, "models"),
+    resourcesDir,
+    vadModelPath: path.join(resourcesDir, "ggml-silero-v5.1.2.bin"),
     runtimeRootDir: path.join(rootDir, "runtime"),
     runtimePlatformDir,
     runtimeManifestPath: path.join(runtimePlatformDir, RUNTIME_MANIFEST_FILE_NAME),

@@ -73,17 +73,15 @@ it.effect("accepts git.preparePullRequestThread requests", () =>
   }),
 );
 
-it.effect("accepts speech-to-text transcription requests", () =>
+it.effect("accepts speech-to-text session start requests", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeWebSocketRequest({
       id: "req-stt-1",
       body: {
-        _tag: WS_METHODS.speechToTextTranscribeWav,
-        wavBase64: "UklGRg==",
-        fileName: "speech.wav",
+        _tag: WS_METHODS.speechToTextStartSession,
       },
     });
-    assert.strictEqual(parsed.body._tag, WS_METHODS.speechToTextTranscribeWav);
+    assert.strictEqual(parsed.body._tag, WS_METHODS.speechToTextStartSession);
   }),
 );
 
@@ -149,6 +147,16 @@ it.effect("accepts speech-to-text push envelopes", () =>
         ],
         catalog: [],
         activeDownload: null,
+        settings: {
+          language: "en",
+          prompt: "Prompt",
+          useVad: true,
+          endpointingEnabled: true,
+          endpointSilenceMs: 450,
+          partialTranscriptsEnabled: true,
+          warmupEnabled: true,
+          qualityProfile: "balanced",
+        },
         errorMessage: null,
       },
     });

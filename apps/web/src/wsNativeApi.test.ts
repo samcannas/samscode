@@ -355,27 +355,29 @@ describe("wsNativeApi", () => {
         installedModels: [],
         catalog: [],
         activeDownload: null,
+        settings: {
+          language: "en",
+          prompt: "Prompt",
+          useVad: true,
+          endpointingEnabled: true,
+          endpointSilenceMs: 450,
+          partialTranscriptsEnabled: true,
+          warmupEnabled: true,
+          qualityProfile: "balanced",
+        },
         errorMessage: null,
       })
       .mockResolvedValueOnce({
-        text: "hello world",
-        modelId: "ggml-base.en.bin",
-        elapsedMs: 42,
+        sessionId: "session-1",
       });
     const { createWsNativeApi } = await import("./wsNativeApi");
 
     const api = createWsNativeApi();
     await api.speechToText.getState();
-    await api.speechToText.transcribeWav({
-      wavBase64: "UklGRg==",
-      fileName: "speech.wav",
-    });
+    await api.speechToText.startSession();
 
     expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.speechToTextGetState);
-    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.speechToTextTranscribeWav, {
-      wavBase64: "UklGRg==",
-      fileName: "speech.wav",
-    });
+    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.speechToTextStartSession);
   });
 
   it("disables request timeouts for speech-to-text model downloads", async () => {
@@ -386,6 +388,16 @@ describe("wsNativeApi", () => {
       installedModels: [],
       catalog: [],
       activeDownload: null,
+      settings: {
+        language: "en",
+        prompt: "Prompt",
+        useVad: true,
+        endpointingEnabled: true,
+        endpointSilenceMs: 450,
+        partialTranscriptsEnabled: true,
+        warmupEnabled: true,
+        qualityProfile: "balanced",
+      },
       errorMessage: null,
     });
     const { createWsNativeApi } = await import("./wsNativeApi");

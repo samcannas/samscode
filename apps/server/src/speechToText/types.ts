@@ -1,7 +1,13 @@
 import type {
   SpeechToTextActiveDownload,
+  SpeechToTextAppendAudioInput,
+  SpeechToTextCancelSessionInput,
+  SpeechToTextSessionEvent,
+  SpeechToTextSettings,
   SpeechToTextState,
-  SpeechToTextTranscriptionResult,
+  SpeechToTextStartSessionResult,
+  SpeechToTextStopSessionInput,
+  SpeechToTextUpdatePreferencesInput,
 } from "@samscode/contracts";
 import type { Effect, Stream } from "effect";
 
@@ -11,21 +17,28 @@ export interface SpeechToTextShape {
   readonly downloadModel: (input: { modelId: string }) => Effect.Effect<SpeechToTextState>;
   readonly deleteModel: (input: { modelId: string }) => Effect.Effect<SpeechToTextState>;
   readonly selectModel: (input: { modelId: string }) => Effect.Effect<SpeechToTextState>;
-  readonly transcribeWav: (input: {
-    wavBase64: string;
-    fileName: string;
-  }) => Effect.Effect<SpeechToTextTranscriptionResult>;
+  readonly updatePreferences: (
+    input: SpeechToTextUpdatePreferencesInput,
+  ) => Effect.Effect<SpeechToTextState>;
+  readonly startSession: Effect.Effect<SpeechToTextStartSessionResult>;
+  readonly appendAudio: (input: SpeechToTextAppendAudioInput) => Effect.Effect<void>;
+  readonly stopSession: (input: SpeechToTextStopSessionInput) => Effect.Effect<void>;
+  readonly cancelSession: (input: SpeechToTextCancelSessionInput) => Effect.Effect<void>;
   readonly streamChanges: Stream.Stream<SpeechToTextState>;
+  readonly streamSessionEvents: Stream.Stream<SpeechToTextSessionEvent>;
 }
 
 export interface SpeechToTextConfigRecord {
   readonly selectedModelId: string | null;
+  readonly settings: SpeechToTextSettings;
 }
 
 export interface SpeechToTextPaths {
   readonly rootDir: string;
   readonly configPath: string;
   readonly modelsDir: string;
+  readonly resourcesDir: string;
+  readonly vadModelPath: string;
   readonly runtimeRootDir: string;
   readonly runtimePlatformDir: string;
   readonly runtimeManifestPath: string;
@@ -37,6 +50,25 @@ export interface SpeechToTextMutableState {
   activeDownload: SpeechToTextActiveDownload | null;
   errorMessage: string | null;
   runtimeErrorMessage: string | null;
+}
+
+export interface SpeechToTextSessionRecord {
+  readonly id: string;
+  readonly startedAt: number;
+  nextSequence: number;
+  segmentIndex: number;
+  totalAudioMs: number;
+  partialText: string;
+  committedSegments: string[];
+  isStopping: boolean;
+  detectedSpeech: boolean;
+  speechDurationMs: number;
+  silenceDurationMs: number;
+  utteranceBuffers: Buffer[];
+  utteranceDurationMs: number;
+  previewQueuedAtMs: number;
+  finalizeChain: Promise<void>;
+  lastError: string | null;
 }
 
 export interface RuntimePlatformTarget {

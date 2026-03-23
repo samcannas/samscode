@@ -9,6 +9,10 @@ describe("speechToText whisperCli", () => {
         modelPath: "/models/ggml-base.en.bin",
         audioPath: "/tmp/input.wav",
         outputBasePath: "/tmp/output",
+        language: "en",
+        prompt: "Prompt",
+        useVad: true,
+        vadModelPath: "/models/ggml-silero-v5.1.2.bin",
       }),
     ).toEqual(
       expect.arrayContaining([
@@ -20,6 +24,11 @@ describe("speechToText whisperCli", () => {
         "--output-file",
         "/tmp/output",
         "--no-prints",
+        "--language",
+        "en",
+        "--prompt",
+        "Prompt",
+        "--vad",
       ]),
     );
   });

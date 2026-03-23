@@ -13,13 +13,37 @@ interface WhisperJsonOutput {
   readonly transcription?: ReadonlyArray<WhisperJsonSegment>;
 }
 
+export interface WhisperCliInvocation {
+  readonly binaryPath: string;
+  readonly modelPath: string;
+  readonly audioPath: string;
+  readonly outputBasePath: string;
+  readonly language: string;
+  readonly prompt: string;
+  readonly useVad: boolean;
+  readonly vadModelPath: string | undefined;
+  readonly temperature?: number;
+  readonly threads?: number;
+  readonly allowEmptyText?: boolean;
+}
+
+function getDefaultThreads(): number {
+  const available = os.availableParallelism?.() ?? 4;
+  return Math.max(1, Math.min(available > 2 ? available - 1 : available, 8));
+}
+
 export function buildWhisperCliArgs(input: {
   modelPath: string;
   audioPath: string;
   outputBasePath: string;
+  language: string;
+  prompt: string;
+  useVad: boolean;
+  vadModelPath: string | undefined;
+  temperature?: number;
+  threads?: number;
 }): string[] {
-  const threads = Math.max(1, Math.min(os.availableParallelism?.() ?? 2, 8));
-  return [
+  const args = [
     "-m",
     input.modelPath,
     "-f",
@@ -28,9 +52,25 @@ export function buildWhisperCliArgs(input: {
     "--output-file",
     input.outputBasePath,
     "--no-prints",
+    "--temperature",
+    String(input.temperature ?? 0.2),
     "--threads",
-    String(threads),
+    String(input.threads ?? getDefaultThreads()),
   ];
+
+  if (input.language && input.language !== "auto") {
+    args.push("--language", input.language);
+  }
+
+  if (input.prompt.trim().length > 0) {
+    args.push("--prompt", input.prompt.trim());
+  }
+
+  if (input.useVad && input.vadModelPath) {
+    args.push("--vad", "--vad-model", input.vadModelPath);
+  }
+
+  return args;
 }
 
 function parseTranscriptFromStdout(stdout: string): string {
@@ -60,12 +100,9 @@ export function parseTranscriptFromWhisperJson(parsed: WhisperJsonOutput): strin
     .trim();
 }
 
-export async function transcribeWithWhisperCli(input: {
-  binaryPath: string;
-  modelPath: string;
-  audioPath: string;
-  outputBasePath: string;
-}): Promise<{ text: string; elapsedMs: number }> {
+export async function transcribeWithWhisperCli(
+  input: WhisperCliInvocation,
+): Promise<{ text: string; elapsedMs: number }> {
   const args = buildWhisperCliArgs(input);
   const startedAt = performance.now();
   const result = await runProcess(input.binaryPath, args, {
@@ -90,7 +127,7 @@ export async function transcribeWithWhisperCli(input: {
     text = parseTranscriptFromStdout(result.stdout);
   }
 
-  if (!text) {
+  if (!text && !input.allowEmptyText) {
     throw new Error("whisper.cpp completed without returning transcript text.");
   }
 

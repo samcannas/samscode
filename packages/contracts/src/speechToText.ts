@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas";
+import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas";
 
 export const SpeechToTextRuntimeStatus = Schema.Literals([
   "ready",
@@ -42,14 +42,33 @@ export const SpeechToTextDownloadPhase = Schema.Literals([
 export type SpeechToTextDownloadPhase = typeof SpeechToTextDownloadPhase.Type;
 
 export const SpeechToTextActiveDownload = Schema.Struct({
-  type: Schema.Literals(["runtime", "model"]),
+  type: Schema.Literals(["runtime", "model", "resource"]),
   phase: SpeechToTextDownloadPhase,
   modelId: Schema.optional(TrimmedNonEmptyString),
+  resourceId: Schema.optional(TrimmedNonEmptyString),
   downloadedBytes: NonNegativeInt,
   totalBytes: Schema.NullOr(NonNegativeInt),
   message: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type SpeechToTextActiveDownload = typeof SpeechToTextActiveDownload.Type;
+
+export const SpeechToTextQualityProfile = Schema.Literals(["fast", "balanced", "quality"]);
+export type SpeechToTextQualityProfile = typeof SpeechToTextQualityProfile.Type;
+
+export const SpeechToTextLanguage = Schema.Union([Schema.Literal("auto"), TrimmedNonEmptyString]);
+export type SpeechToTextLanguage = typeof SpeechToTextLanguage.Type;
+
+export const SpeechToTextSettings = Schema.Struct({
+  language: SpeechToTextLanguage,
+  prompt: TrimmedString,
+  useVad: Schema.Boolean,
+  endpointingEnabled: Schema.Boolean,
+  endpointSilenceMs: PositiveInt,
+  partialTranscriptsEnabled: Schema.Boolean,
+  warmupEnabled: Schema.Boolean,
+  qualityProfile: SpeechToTextQualityProfile,
+});
+export type SpeechToTextSettings = typeof SpeechToTextSettings.Type;
 
 export const SpeechToTextState = Schema.Struct({
   available: Schema.Boolean,
@@ -58,6 +77,7 @@ export const SpeechToTextState = Schema.Struct({
   installedModels: Schema.Array(SpeechToTextInstalledModel),
   catalog: Schema.Array(SpeechToTextModelCatalogEntry),
   activeDownload: Schema.NullOr(SpeechToTextActiveDownload),
+  settings: SpeechToTextSettings,
   errorMessage: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type SpeechToTextState = typeof SpeechToTextState.Type;
@@ -80,15 +100,89 @@ export const SpeechToTextSelectModelInput = Schema.Struct({
 });
 export type SpeechToTextSelectModelInput = typeof SpeechToTextSelectModelInput.Type;
 
-export const SpeechToTextTranscribeWavInput = Schema.Struct({
-  wavBase64: TrimmedNonEmptyString,
-  fileName: TrimmedNonEmptyString,
-});
-export type SpeechToTextTranscribeWavInput = typeof SpeechToTextTranscribeWavInput.Type;
+export const SpeechToTextUpdatePreferencesInput = SpeechToTextSettings;
+export type SpeechToTextUpdatePreferencesInput = typeof SpeechToTextUpdatePreferencesInput.Type;
 
-export const SpeechToTextTranscriptionResult = Schema.Struct({
+export const SpeechToTextSessionId = TrimmedNonEmptyString;
+export type SpeechToTextSessionId = typeof SpeechToTextSessionId.Type;
+
+export const SpeechToTextStartSessionInput = Schema.Struct({});
+export type SpeechToTextStartSessionInput = typeof SpeechToTextStartSessionInput.Type;
+
+export const SpeechToTextStartSessionResult = Schema.Struct({
+  sessionId: SpeechToTextSessionId,
+});
+export type SpeechToTextStartSessionResult = typeof SpeechToTextStartSessionResult.Type;
+
+export const SpeechToTextAppendAudioInput = Schema.Struct({
+  sessionId: SpeechToTextSessionId,
+  sequence: NonNegativeInt,
+  pcmBase64: TrimmedNonEmptyString,
+  durationMs: PositiveInt,
+});
+export type SpeechToTextAppendAudioInput = typeof SpeechToTextAppendAudioInput.Type;
+
+export const SpeechToTextStopSessionInput = Schema.Struct({
+  sessionId: SpeechToTextSessionId,
+});
+export type SpeechToTextStopSessionInput = typeof SpeechToTextStopSessionInput.Type;
+
+export const SpeechToTextCancelSessionInput = Schema.Struct({
+  sessionId: SpeechToTextSessionId,
+});
+export type SpeechToTextCancelSessionInput = typeof SpeechToTextCancelSessionInput.Type;
+
+export const SpeechToTextSessionStartedEvent = Schema.Struct({
+  type: Schema.Literal("started"),
+  sessionId: SpeechToTextSessionId,
+});
+export type SpeechToTextSessionStartedEvent = typeof SpeechToTextSessionStartedEvent.Type;
+
+export const SpeechToTextSessionPartialEvent = Schema.Struct({
+  type: Schema.Literal("partial"),
+  sessionId: SpeechToTextSessionId,
+  segmentIndex: NonNegativeInt,
+  text: TrimmedString,
+});
+export type SpeechToTextSessionPartialEvent = typeof SpeechToTextSessionPartialEvent.Type;
+
+export const SpeechToTextSessionSegmentCommittedEvent = Schema.Struct({
+  type: Schema.Literal("segmentCommitted"),
+  sessionId: SpeechToTextSessionId,
+  segmentIndex: NonNegativeInt,
   text: TrimmedNonEmptyString,
-  modelId: TrimmedNonEmptyString,
+});
+export type SpeechToTextSessionSegmentCommittedEvent =
+  typeof SpeechToTextSessionSegmentCommittedEvent.Type;
+
+export const SpeechToTextSessionFinalEvent = Schema.Struct({
+  type: Schema.Literal("final"),
+  sessionId: SpeechToTextSessionId,
+  text: TrimmedNonEmptyString,
   elapsedMs: NonNegativeInt,
 });
-export type SpeechToTextTranscriptionResult = typeof SpeechToTextTranscriptionResult.Type;
+export type SpeechToTextSessionFinalEvent = typeof SpeechToTextSessionFinalEvent.Type;
+
+export const SpeechToTextSessionEndedEvent = Schema.Struct({
+  type: Schema.Literal("ended"),
+  sessionId: SpeechToTextSessionId,
+  reason: Schema.Literals(["completed", "cancelled", "error"]),
+});
+export type SpeechToTextSessionEndedEvent = typeof SpeechToTextSessionEndedEvent.Type;
+
+export const SpeechToTextSessionErrorEvent = Schema.Struct({
+  type: Schema.Literal("error"),
+  sessionId: SpeechToTextSessionId,
+  message: TrimmedNonEmptyString,
+});
+export type SpeechToTextSessionErrorEvent = typeof SpeechToTextSessionErrorEvent.Type;
+
+export const SpeechToTextSessionEvent = Schema.Union([
+  SpeechToTextSessionStartedEvent,
+  SpeechToTextSessionPartialEvent,
+  SpeechToTextSessionSegmentCommittedEvent,
+  SpeechToTextSessionFinalEvent,
+  SpeechToTextSessionEndedEvent,
+  SpeechToTextSessionErrorEvent,
+]);
+export type SpeechToTextSessionEvent = typeof SpeechToTextSessionEvent.Type;

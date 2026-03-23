@@ -1256,6 +1256,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     serverState: speechToTextServerState,
     buttonState: speechToTextButtonState,
     errorMessage: speechToTextErrorMessage,
+    previewText: speechToTextPreviewText,
     onMicButtonClick: onSpeechToTextMicButtonClick,
     onShortcutKeyDown: onSpeechToTextShortcutKeyDown,
     onShortcutKeyUp: onSpeechToTextShortcutKeyUp,
@@ -3848,6 +3849,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
                       data-chat-composer-actions="right"
                       className="flex shrink-0 items-center gap-2"
                     >
+                      {speechToTextPreviewText ? (
+                        <span className="max-w-56 truncate text-xs text-muted-foreground/80">
+                          {speechToTextPreviewText}
+                        </span>
+                      ) : null}
                       {isPreparingWorktree ? (
                         <span className="text-muted-foreground/70 text-xs">
                           Preparing worktree...

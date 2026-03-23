@@ -1,9 +1,8 @@
-import { type SpeechToTextState } from "@samscode/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readNativeApi } from "~/nativeApi";
 import { BrowserSpeechRecorder, MAX_SPEECH_TO_TEXT_RECORDING_MS } from "./audioCapture";
-import { updateSpeechToTextState, useSpeechToTextState } from "./speechToTextState";
+import { useSpeechToTextState } from "./speechToTextState";
 
 export interface SpeechToTextComposerSnapshot {
   readonly value: string;
@@ -36,7 +35,7 @@ function normalizeTranscriptionError(error: unknown): string {
 
 function canStartRecording(options: {
   readonly canUseComposer: boolean;
-  readonly state: SpeechToTextState | null;
+  readonly state: ReturnType<typeof useSpeechToTextState>["state"];
   readonly isTerminalFocused: () => boolean;
   readonly isModalOpen: () => boolean;
 }): boolean {
@@ -55,14 +54,31 @@ function canStartRecording(options: {
   );
 }
 
+function joinTranscriptPreview(
+  committedSegments: ReadonlyArray<string>,
+  partialText: string,
+): string {
+  return [...committedSegments, partialText].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
 export function useSpeechToText(options: UseSpeechToTextOptions) {
   const { state: speechToTextState } = useSpeechToTextState();
+  const optionsRef = useRef(options);
   const recorderRef = useRef<BrowserSpeechRecorder | null>(null);
   const transcribeSnapshotRef = useRef<SpeechToTextComposerSnapshot | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const appendTailRef = useRef<Promise<void>>(Promise.resolve());
+  const committedSegmentsRef = useRef<string[]>([]);
+  const finalInsertedRef = useRef(false);
   const holdShortcutActiveRef = useRef(false);
   const stopTimerRef = useRef<number | null>(null);
   const [phase, setPhase] = useState<"idle" | "recording" | "transcribing">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string>("");
+
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   const clearStopTimer = useCallback(() => {
     if (stopTimerRef.current !== null) {
@@ -71,31 +87,44 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
     }
   }, []);
 
+  const resetSessionState = useCallback(() => {
+    recorderRef.current = null;
+    sessionIdRef.current = null;
+    appendTailRef.current = Promise.resolve();
+    committedSegmentsRef.current = [];
+    transcribeSnapshotRef.current = null;
+    finalInsertedRef.current = false;
+    setPreviewText("");
+    setPhase("idle");
+    holdShortcutActiveRef.current = false;
+  }, []);
+
   const cancelRecording = useCallback(async () => {
     clearStopTimer();
-    holdShortcutActiveRef.current = false;
+    const api = readNativeApi();
+    const sessionId = sessionIdRef.current;
     const recorder = recorderRef.current;
-    recorderRef.current = null;
-    setPhase("idle");
-    if (!recorder) {
-      return;
+    resetSessionState();
+    await recorder?.cancel().catch(() => undefined);
+    if (api && sessionId) {
+      await api.speechToText.cancelSession({ sessionId }).catch(() => undefined);
     }
-    await recorder.cancel().catch(() => undefined);
-  }, [clearStopTimer]);
+  }, [clearStopTimer, resetSessionState]);
 
   const stopRecordingAndTranscribe = useCallback(async () => {
     clearStopTimer();
+    const api = readNativeApi();
+    const sessionId = sessionIdRef.current;
     const recorder = recorderRef.current;
-    recorderRef.current = null;
-    if (!recorder) {
-      setPhase("idle");
+    if (!api || !sessionId || !recorder) {
+      resetSessionState();
       return;
     }
 
-    const latestSnapshot = options.readComposerSnapshot() ?? transcribeSnapshotRef.current;
+    const latestSnapshot =
+      optionsRef.current.readComposerSnapshot() ?? transcribeSnapshotRef.current;
     if (!latestSnapshot) {
-      await recorder.cancel().catch(() => undefined);
-      setPhase("idle");
+      await cancelRecording();
       setErrorMessage("The composer selection was lost before inserting the transcript.");
       return;
     }
@@ -103,29 +132,14 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
 
     setPhase("transcribing");
     try {
-      const captured = await recorder.stop();
-      const api = readNativeApi();
-      if (!api) {
-        throw new Error("Speech-to-text API is unavailable.");
-      }
-      const result = await api.speechToText.transcribeWav({
-        wavBase64: captured.wavBase64,
-        fileName: captured.fileName,
-      });
-      const nextState = await api.speechToText.getState().catch(() => null);
-      if (nextState) {
-        updateSpeechToTextState(nextState);
-      }
-      await options.insertTranscript(result.text, latestSnapshot);
-      setErrorMessage(null);
+      await recorder.stop();
+      await appendTailRef.current.catch(() => undefined);
+      await api.speechToText.stopSession({ sessionId });
     } catch (error) {
       setErrorMessage(normalizeTranscriptionError(error));
-    } finally {
-      holdShortcutActiveRef.current = false;
-      transcribeSnapshotRef.current = null;
-      setPhase("idle");
+      await cancelRecording();
     }
-  }, [clearStopTimer, options]);
+  }, [cancelRecording, clearStopTimer, resetSessionState]);
 
   const startRecording = useCallback(async () => {
     if (phase !== "idle") {
@@ -148,22 +162,107 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
       return;
     }
 
+    const api = readNativeApi();
+    if (!api) {
+      setErrorMessage("Speech-to-text API is unavailable.");
+      return;
+    }
+
     try {
+      const session = await api.speechToText.startSession();
       const recorder = new BrowserSpeechRecorder();
-      await recorder.start();
+      sessionIdRef.current = session.sessionId;
       recorderRef.current = recorder;
       transcribeSnapshotRef.current = snapshot;
+      committedSegmentsRef.current = [];
+      appendTailRef.current = Promise.resolve();
+      finalInsertedRef.current = false;
+      setPreviewText("");
       setErrorMessage(null);
       setPhase("recording");
+      await recorder.start({
+        onChunk: (chunk) => {
+          const currentSessionId = sessionIdRef.current;
+          if (!currentSessionId) {
+            return;
+          }
+          appendTailRef.current = appendTailRef.current
+            .catch(() => undefined)
+            .then(() =>
+              api.speechToText.appendAudio({
+                sessionId: currentSessionId,
+                sequence: chunk.sequence,
+                pcmBase64: chunk.pcmBase64,
+                durationMs: chunk.durationMs,
+              }),
+            );
+        },
+      });
       stopTimerRef.current = window.setTimeout(() => {
         void stopRecordingAndTranscribe();
       }, MAX_SPEECH_TO_TEXT_RECORDING_MS);
     } catch (error) {
-      recorderRef.current = null;
-      setPhase("idle");
+      resetSessionState();
       setErrorMessage(normalizeTranscriptionError(error));
     }
-  }, [options, phase, speechToTextState, stopRecordingAndTranscribe]);
+  }, [options, phase, resetSessionState, speechToTextState, stopRecordingAndTranscribe]);
+
+  useEffect(() => {
+    const api = readNativeApi();
+    if (!api) {
+      return undefined;
+    }
+
+    return api.speechToText.onSessionEvent((event) => {
+      if (event.sessionId !== sessionIdRef.current) {
+        return;
+      }
+
+      if (event.type === "partial") {
+        setPreviewText(joinTranscriptPreview(committedSegmentsRef.current, event.text));
+        return;
+      }
+
+      if (event.type === "segmentCommitted") {
+        committedSegmentsRef.current = [...committedSegmentsRef.current, event.text];
+        setPreviewText(joinTranscriptPreview(committedSegmentsRef.current, ""));
+        return;
+      }
+
+      if (event.type === "error") {
+        setErrorMessage(event.message);
+        return;
+      }
+
+      if (event.type === "final") {
+        setPreviewText(event.text);
+        if (finalInsertedRef.current) {
+          return;
+        }
+        finalInsertedRef.current = true;
+        const latestSnapshot =
+          optionsRef.current.readComposerSnapshot() ?? transcribeSnapshotRef.current;
+        if (!latestSnapshot) {
+          setErrorMessage("The composer selection was lost before inserting the transcript.");
+          return;
+        }
+
+        void Promise.resolve(optionsRef.current.insertTranscript(event.text, latestSnapshot))
+          .then(() => {
+            setErrorMessage(null);
+          })
+          .catch((error) => {
+            setErrorMessage(normalizeTranscriptionError(error));
+          });
+        return;
+      }
+
+      if (event.type === "ended") {
+        clearStopTimer();
+        resetSessionState();
+      }
+    });
+  }, [clearStopTimer, resetSessionState]);
 
   useEffect(() => {
     const handleWindowBlur = () => {
@@ -238,6 +337,7 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
     serverState: speechToTextState,
     buttonState,
     errorMessage,
+    previewText,
     isTranscribing: phase === "transcribing",
     onMicButtonClick,
     onShortcutKeyDown,

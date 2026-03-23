@@ -3,6 +3,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   type ContextMenuItem,
   type NativeApi,
+  type SpeechToTextSessionEvent,
   type SpeechToTextState,
   ServerConfigUpdatedPayload,
   WS_CHANNELS,
@@ -17,6 +18,7 @@ let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
 const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
 const speechToTextStateListeners = new Set<(payload: SpeechToTextState) => void>();
+const speechToTextSessionEventListeners = new Set<(payload: SpeechToTextSessionEvent) => void>();
 
 /**
  * Subscribe to the server welcome message. If a welcome was already received
@@ -84,6 +86,15 @@ export function onSpeechToTextStateChanged(
   };
 }
 
+export function onSpeechToTextSessionEvent(
+  listener: (payload: SpeechToTextSessionEvent) => void,
+): () => void {
+  speechToTextSessionEventListeners.add(listener);
+  return () => {
+    speechToTextSessionEventListeners.delete(listener);
+  };
+}
+
 export function createWsNativeApi(): NativeApi {
   if (instance) return instance.api;
 
@@ -112,6 +123,16 @@ export function createWsNativeApi(): NativeApi {
   transport.subscribe(WS_CHANNELS.speechToTextUpdated, (message) => {
     const payload = message.data;
     for (const listener of speechToTextStateListeners) {
+      try {
+        listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+  transport.subscribe(WS_CHANNELS.speechToTextSessionEvent, (message) => {
+    const payload = message.data;
+    for (const listener of speechToTextSessionEventListeners) {
       try {
         listener(payload);
       } catch {
@@ -199,9 +220,18 @@ export function createWsNativeApi(): NativeApi {
         transport.request(WS_METHODS.speechToTextDownloadModel, input, { timeoutMs: 0 }),
       deleteModel: (input) => transport.request(WS_METHODS.speechToTextDeleteModel, input),
       selectModel: (input) => transport.request(WS_METHODS.speechToTextSelectModel, input),
-      transcribeWav: (input) => transport.request(WS_METHODS.speechToTextTranscribeWav, input),
+      updatePreferences: (input) =>
+        transport.request(WS_METHODS.speechToTextUpdatePreferences, input),
+      startSession: () => transport.request(WS_METHODS.speechToTextStartSession),
+      appendAudio: (input) => transport.request(WS_METHODS.speechToTextAppendAudio, input),
+      stopSession: (input) => transport.request(WS_METHODS.speechToTextStopSession, input),
+      cancelSession: (input) => transport.request(WS_METHODS.speechToTextCancelSession, input),
       onStateChanged: (callback) =>
         transport.subscribe(WS_CHANNELS.speechToTextUpdated, (message) => callback(message.data)),
+      onSessionEvent: (callback) =>
+        transport.subscribe(WS_CHANNELS.speechToTextSessionEvent, (message) =>
+          callback(message.data),
+        ),
     },
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),

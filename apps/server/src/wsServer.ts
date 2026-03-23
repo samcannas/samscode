@@ -627,6 +627,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   yield* Stream.runForEach(speechToText.streamChanges, (event) =>
     pushBus.publishAll(WS_CHANNELS.speechToTextUpdated, event),
   ).pipe(Effect.forkIn(subscriptionsScope));
+  yield* Stream.runForEach(speechToText.streamSessionEvents, (event) =>
+    pushBus.publishAll(WS_CHANNELS.speechToTextSessionEvent, event),
+  ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
   yield* readiness.markOrchestrationSubscriptionsReady;
@@ -910,9 +913,27 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return yield* speechToText.selectModel(body);
       }
 
-      case WS_METHODS.speechToTextTranscribeWav: {
+      case WS_METHODS.speechToTextUpdatePreferences: {
         const body = stripRequestTag(request.body);
-        return yield* speechToText.transcribeWav(body);
+        return yield* speechToText.updatePreferences(body);
+      }
+
+      case WS_METHODS.speechToTextStartSession:
+        return yield* speechToText.startSession;
+
+      case WS_METHODS.speechToTextAppendAudio: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.appendAudio(body);
+      }
+
+      case WS_METHODS.speechToTextStopSession: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.stopSession(body);
+      }
+
+      case WS_METHODS.speechToTextCancelSession: {
+        const body = stripRequestTag(request.body);
+        return yield* speechToText.cancelSession(body);
       }
 
       default: {

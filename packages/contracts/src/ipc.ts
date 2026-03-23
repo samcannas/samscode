@@ -47,12 +47,16 @@ import type {
 } from "./orchestration";
 import { EditorId } from "./editor";
 import type {
+  SpeechToTextAppendAudioInput,
+  SpeechToTextCancelSessionInput,
   SpeechToTextDeleteModelInput,
   SpeechToTextDownloadModelInput,
+  SpeechToTextSessionEvent,
   SpeechToTextSelectModelInput,
+  SpeechToTextStartSessionResult,
   SpeechToTextState,
-  SpeechToTextTranscribeWavInput,
-  SpeechToTextTranscriptionResult,
+  SpeechToTextStopSessionInput,
+  SpeechToTextUpdatePreferencesInput,
 } from "./speechToText";
 
 export interface ContextMenuItem<T extends string = string> {
@@ -173,10 +177,13 @@ export interface NativeApi {
     downloadModel: (input: SpeechToTextDownloadModelInput) => Promise<SpeechToTextState>;
     deleteModel: (input: SpeechToTextDeleteModelInput) => Promise<SpeechToTextState>;
     selectModel: (input: SpeechToTextSelectModelInput) => Promise<SpeechToTextState>;
-    transcribeWav: (
-      input: SpeechToTextTranscribeWavInput,
-    ) => Promise<SpeechToTextTranscriptionResult>;
+    updatePreferences: (input: SpeechToTextUpdatePreferencesInput) => Promise<SpeechToTextState>;
+    startSession: () => Promise<SpeechToTextStartSessionResult>;
+    appendAudio: (input: SpeechToTextAppendAudioInput) => Promise<void>;
+    stopSession: (input: SpeechToTextStopSessionInput) => Promise<void>;
+    cancelSession: (input: SpeechToTextCancelSessionInput) => Promise<void>;
     onStateChanged: (callback: (state: SpeechToTextState) => void) => () => void;
+    onSessionEvent: (callback: (event: SpeechToTextSessionEvent) => void) => () => void;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

@@ -32,8 +32,8 @@ export const SPEECH_TO_TEXT_MODEL_CATALOG: ReadonlyArray<SpeechToTextModelCatalo
     fileName: "ggml-base.bin",
     name: "Base",
     language: "multilingual",
-    recommended: true,
-    description: "Recommended multilingual model balancing speed and quality.",
+    recommended: false,
+    description: "Entry multilingual model for low-memory local transcription.",
     sizeBytes: mb(148),
   },
   {
@@ -41,9 +41,18 @@ export const SPEECH_TO_TEXT_MODEL_CATALOG: ReadonlyArray<SpeechToTextModelCatalo
     fileName: "ggml-base.en.bin",
     name: "Base English",
     language: "english",
-    recommended: true,
-    description: "Recommended English model for everyday local dictation.",
+    recommended: false,
+    description: "Entry English model for low-memory local dictation.",
     sizeBytes: mb(148),
+  },
+  {
+    id: "ggml-distil-large-v3.bin",
+    fileName: "ggml-distil-large-v3.bin",
+    name: "Distil Large v3",
+    language: "english",
+    recommended: true,
+    description: "Recommended English model for fast, high-quality dictation.",
+    sizeBytes: mb(756),
   },
   {
     id: "ggml-large-v2.bin",
@@ -77,8 +86,8 @@ export const SPEECH_TO_TEXT_MODEL_CATALOG: ReadonlyArray<SpeechToTextModelCatalo
     fileName: "ggml-large-v3-turbo-q5_0.bin",
     name: "Large v3 Turbo Q5",
     language: "multilingual",
-    recommended: false,
-    description: "Quantized turbo model for lower memory usage.",
+    recommended: true,
+    description: "Recommended multilingual model for strong dictation quality and speed.",
     sizeBytes: mb(574),
   },
 ];
@@ -89,5 +98,5 @@ export function getSpeechToTextCatalogEntry(modelId: string): SpeechToTextModelC
   return catalogById.get(modelId) ?? null;
 }
 
-export const DEFAULT_ENGLISH_SPEECH_TO_TEXT_MODEL_ID = "ggml-base.en.bin";
-export const DEFAULT_MULTILINGUAL_SPEECH_TO_TEXT_MODEL_ID = "ggml-base.bin";
+export const DEFAULT_ENGLISH_SPEECH_TO_TEXT_MODEL_ID = "ggml-distil-large-v3.bin";
+export const DEFAULT_MULTILINGUAL_SPEECH_TO_TEXT_MODEL_ID = "ggml-large-v3-turbo-q5_0.bin";

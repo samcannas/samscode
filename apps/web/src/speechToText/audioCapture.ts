@@ -1,12 +1,14 @@
-import { arrayBufferToBase64, encodeMonoWav, resampleMonoPcmLinear } from "./wavEncoder";
+import { arrayBufferToBase64, encodeMonoPcm16, resampleMonoPcmLinear } from "./wavEncoder";
 
 const TARGET_SAMPLE_RATE = 16_000;
+const PROCESSOR_BUFFER_SIZE = 2048;
+
 export const MAX_SPEECH_TO_TEXT_RECORDING_MS = 90_000;
 
-export interface CapturedSpeechAudio {
-  readonly wavBase64: string;
+export interface StreamingSpeechChunk {
+  readonly sequence: number;
+  readonly pcmBase64: string;
   readonly durationMs: number;
-  readonly fileName: string;
 }
 
 function normalizeAudioCaptureError(error: unknown): Error {
@@ -24,31 +26,20 @@ function normalizeAudioCaptureError(error: unknown): Error {
   return error instanceof Error ? error : new Error("Unable to start microphone recording.");
 }
 
-function concatAudioChunks(chunks: ReadonlyArray<Float32Array>): Float32Array {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const output = new Float32Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return output;
-}
-
 export class BrowserSpeechRecorder {
   private stream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private muteNode: GainNode | null = null;
-  private chunks: Float32Array[] = [];
   private startedAt = 0;
+  private nextSequence = 0;
 
   get isRecording(): boolean {
     return this.stream !== null;
   }
 
-  async start(): Promise<void> {
+  async start(options: { onChunk: (chunk: StreamingSpeechChunk) => void }): Promise<void> {
     if (this.isRecording) {
       return;
     }
@@ -64,15 +55,27 @@ export class BrowserSpeechRecorder {
       });
       const audioContext = new AudioContext();
       const sourceNode = audioContext.createMediaStreamSource(stream);
-      const processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+      const processorNode = audioContext.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
       const muteNode = audioContext.createGain();
       muteNode.gain.value = 0;
 
-      this.chunks = [];
       this.startedAt = performance.now();
+      this.nextSequence = 0;
+
       processorNode.onaudioprocess = (event) => {
         const channelData = event.inputBuffer.getChannelData(0);
-        this.chunks.push(new Float32Array(channelData));
+        const resampled = resampleMonoPcmLinear(
+          new Float32Array(channelData),
+          audioContext.sampleRate,
+          TARGET_SAMPLE_RATE,
+        );
+        const pcm16 = encodeMonoPcm16(resampled);
+        const durationMs = Math.max(1, Math.round((resampled.length / TARGET_SAMPLE_RATE) * 1000));
+        options.onChunk({
+          sequence: this.nextSequence++,
+          pcmBase64: arrayBufferToBase64(pcm16.buffer.slice(0)),
+          durationMs,
+        });
       };
 
       sourceNode.connect(processorNode);
@@ -89,23 +92,14 @@ export class BrowserSpeechRecorder {
     }
   }
 
-  async stop(): Promise<CapturedSpeechAudio> {
+  async stop(): Promise<{ durationMs: number }> {
     if (!this.stream || !this.audioContext) {
       throw new Error("No active speech-to-text recording is in progress.");
     }
 
-    const audioContext = this.audioContext;
-    const chunks = concatAudioChunks(this.chunks);
-    const resampled = resampleMonoPcmLinear(chunks, audioContext.sampleRate, TARGET_SAMPLE_RATE);
-    const wavBuffer = encodeMonoWav(resampled, TARGET_SAMPLE_RATE);
     const durationMs = Math.max(0, Math.round(performance.now() - this.startedAt));
     await this.teardown();
-
-    return {
-      wavBase64: arrayBufferToBase64(wavBuffer),
-      durationMs,
-      fileName: "speech-to-text.wav",
-    };
+    return { durationMs };
   }
 
   async cancel(): Promise<void> {
@@ -126,7 +120,6 @@ export class BrowserSpeechRecorder {
     this.sourceNode = null;
     this.processorNode = null;
     this.muteNode = null;
-    this.chunks = [];
     this.startedAt = 0;
   }
 }

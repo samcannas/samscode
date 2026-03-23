@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createSpeechToTextConfigStore } from "./configStore";
+import { createSpeechToTextConfigStore, DEFAULT_SPEECH_TO_TEXT_SETTINGS } from "./configStore";
 
 describe("speechToText configStore", () => {
   it("persists and reloads the selected model", async () => {
@@ -12,10 +12,14 @@ describe("speechToText configStore", () => {
     const configPath = path.join(tempDir, "config.json");
     const store = createSpeechToTextConfigStore(configPath);
 
-    await store.save({ selectedModelId: "ggml-base.en.bin" });
+    await store.save({
+      selectedModelId: "ggml-base.en.bin",
+      settings: DEFAULT_SPEECH_TO_TEXT_SETTINGS,
+    });
 
     await expect(store.load()).resolves.toEqual({
       selectedModelId: "ggml-base.en.bin",
+      settings: DEFAULT_SPEECH_TO_TEXT_SETTINGS,
     });
   });
 
@@ -25,6 +29,9 @@ describe("speechToText configStore", () => {
     await fs.writeFile(configPath, "{not-json", "utf8");
     const store = createSpeechToTextConfigStore(configPath);
 
-    await expect(store.load()).resolves.toEqual({ selectedModelId: null });
+    await expect(store.load()).resolves.toEqual({
+      selectedModelId: null,
+      settings: DEFAULT_SPEECH_TO_TEXT_SETTINGS,
+    });
   });
 });

@@ -1,17 +1,36 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import type {
   SpeechToTextInstalledModel,
+  SpeechToTextSessionEvent,
+  SpeechToTextSessionFinalEvent,
+  SpeechToTextSessionSegmentCommittedEvent,
+  SpeechToTextSessionStartedEvent,
+  SpeechToTextSessionPartialEvent,
+  SpeechToTextSettings,
   SpeechToTextState,
-  SpeechToTextTranscriptionResult,
 } from "@samscode/contracts";
 import { Effect, PubSub, ServiceMap, Stream } from "effect";
 
 import { ServerConfig } from "../config";
-import { getSpeechToTextCatalogEntry, SPEECH_TO_TEXT_MODEL_CATALOG } from "./catalog";
+import {
+  DEFAULT_ENGLISH_SPEECH_TO_TEXT_MODEL_ID,
+  DEFAULT_MULTILINGUAL_SPEECH_TO_TEXT_MODEL_ID,
+  getSpeechToTextCatalogEntry,
+  SPEECH_TO_TEXT_MODEL_CATALOG,
+} from "./catalog";
 import { createSpeechToTextConfigStore } from "./configStore";
+import {
+  PREVIEW_INTERVAL_MS,
+  PREVIEW_MIN_AUDIO_MS,
+  isSpeechChunk,
+  MIN_SPEECH_MS,
+} from "./endpointing";
 import { downloadFileToPath } from "./downloadManager";
+import { calculateChunkRms, decodePcmBase64, writePcmChunksToWavFile } from "./pcmWav";
+import { ensureVadModelInstalled } from "./resources";
 import {
   buildRuntimeArchiveTempPath,
   ensureRuntimeBinaryPermissions,
@@ -23,12 +42,13 @@ import {
   resolveSpeechToTextPaths,
   writeRuntimeInstallationMetadata,
 } from "./runtimeResolver";
-import type { SpeechToTextMutableState, SpeechToTextShape } from "./types";
-import {
-  assertSpeechToTextWavPayload,
-  decodeSpeechToTextWavBase64,
-  sanitizeSpeechToTextFileName,
-} from "./wavInput";
+import type {
+  SpeechToTextConfigRecord,
+  SpeechToTextMutableState,
+  SpeechToTextSessionRecord,
+  SpeechToTextShape,
+} from "./types";
+import { runSpeechToTextWarmup } from "./warmup";
 import { transcribeWithWhisperCli } from "./whisperCli";
 
 export class SpeechToText extends ServiceMap.Service<SpeechToText, SpeechToTextShape>()(
@@ -113,11 +133,80 @@ function normalizeWhisperCliErrorMessage(message: string, modelName: string): st
   return message;
 }
 
+function resolvePreferredInstalledModelId(input: {
+  installedModels: ReadonlyArray<SpeechToTextInstalledModel>;
+  settings: SpeechToTextSettings;
+}): string | null {
+  if (input.installedModels.length === 0) {
+    return null;
+  }
+
+  const preferredId =
+    input.settings.language === "en"
+      ? input.settings.qualityProfile === "fast"
+        ? "ggml-base.en.bin"
+        : input.settings.qualityProfile === "quality"
+          ? "ggml-large-v3.bin"
+          : DEFAULT_ENGLISH_SPEECH_TO_TEXT_MODEL_ID
+      : input.settings.qualityProfile === "fast"
+        ? "ggml-base.bin"
+        : input.settings.qualityProfile === "quality"
+          ? "ggml-large-v3.bin"
+          : DEFAULT_MULTILINGUAL_SPEECH_TO_TEXT_MODEL_ID;
+  if (input.installedModels.some((entry) => entry.id === preferredId)) {
+    return preferredId;
+  }
+
+  const recommended = input.installedModels.find(
+    (entry) =>
+      SPEECH_TO_TEXT_MODEL_CATALOG.find((catalogEntry) => catalogEntry.id === entry.id)
+        ?.recommended,
+  );
+  return recommended?.id ?? input.installedModels[0]?.id ?? null;
+}
+
+function getLanguageForModel(settings: SpeechToTextSettings, modelId: string): string {
+  const model = getSpeechToTextCatalogEntry(modelId);
+  if (!model) {
+    return settings.language;
+  }
+  if (model.language === "english" && settings.language === "auto") {
+    return "en";
+  }
+  return settings.language;
+}
+
+function getPromptForSettings(settings: SpeechToTextSettings): string {
+  return settings.prompt.trim();
+}
+
+function createEmptySessionRecord(id: string): SpeechToTextSessionRecord {
+  return {
+    id,
+    startedAt: Date.now(),
+    nextSequence: 0,
+    segmentIndex: 0,
+    totalAudioMs: 0,
+    partialText: "",
+    committedSegments: [],
+    isStopping: false,
+    detectedSpeech: false,
+    speechDurationMs: 0,
+    silenceDurationMs: 0,
+    utteranceBuffers: [],
+    utteranceDurationMs: 0,
+    previewQueuedAtMs: 0,
+    finalizeChain: Promise.resolve(),
+    lastError: null,
+  };
+}
+
 export const makeSpeechToText = Effect.gen(function* () {
   const { stateDir, mode, host } = yield* ServerConfig;
   const paths = resolveSpeechToTextPaths(stateDir);
   const configStore = createSpeechToTextConfigStore(paths.configPath);
   const stateChangesPubSub = yield* PubSub.unbounded<SpeechToTextState>();
+  const sessionEventsPubSub = yield* PubSub.unbounded<SpeechToTextSessionEvent>();
   const downloadMutex = createAsyncMutex();
   const transcriptionMutex = createAsyncMutex();
   const runtimeTarget = resolveRuntimePlatformTarget();
@@ -126,33 +215,63 @@ export const makeSpeechToText = Effect.gen(function* () {
     process.env.SAMSCODE_ENABLE_REMOTE_STT === "true" ||
     mode === "desktop" ||
     isLoopbackHost(host);
+  const sessions = new Map<string, SpeechToTextSessionRecord>();
   let started = false;
+  let warmupInFlight: Promise<void> | null = null;
+  let cachedConfig: SpeechToTextConfigRecord | null = null;
   const mutableState: SpeechToTextMutableState = {
     activeDownload: null,
     errorMessage: null,
     runtimeErrorMessage: null,
   };
 
+  const loadConfig = async (): Promise<SpeechToTextConfigRecord> => {
+    if (cachedConfig) {
+      return cachedConfig;
+    }
+    cachedConfig = await configStore.load();
+    return cachedConfig;
+  };
+
+  const saveConfig = async (config: SpeechToTextConfigRecord): Promise<void> => {
+    cachedConfig = config;
+    await configStore.save(config);
+  };
+
   const ensureDirectories = async (): Promise<void> => {
     await Promise.all([
       fs.mkdir(paths.rootDir, { recursive: true }),
       fs.mkdir(paths.modelsDir, { recursive: true }),
+      fs.mkdir(paths.resourcesDir, { recursive: true }),
       fs.mkdir(paths.runtimeRootDir, { recursive: true }),
       fs.mkdir(paths.downloadsDir, { recursive: true }),
       fs.mkdir(paths.tmpDir, { recursive: true }),
     ]);
   };
 
-  const resolveCurrentState = async (): Promise<SpeechToTextState> => {
-    await ensureDirectories();
-    const config = await configStore.load();
+  const loadResolvedConfig = async (): Promise<SpeechToTextConfigRecord> => {
+    const config = await loadConfig();
     const installedModels = await listInstalledModels(paths.modelsDir, config.selectedModelId);
     const selectedModelId = installedModels.some((entry) => entry.id === config.selectedModelId)
       ? config.selectedModelId
-      : null;
-    if (config.selectedModelId !== selectedModelId) {
-      await configStore.save({ selectedModelId });
+      : resolvePreferredInstalledModelId({
+          installedModels,
+          settings: config.settings,
+        });
+
+    if (selectedModelId !== config.selectedModelId) {
+      const nextConfig = { ...config, selectedModelId };
+      await saveConfig(nextConfig);
+      return nextConfig;
     }
+
+    return config;
+  };
+
+  const resolveCurrentState = async (): Promise<SpeechToTextState> => {
+    await ensureDirectories();
+    const config = await loadResolvedConfig();
+    const installedModels = await listInstalledModels(paths.modelsDir, config.selectedModelId);
 
     const runtimeBinaryPath = await resolveInstalledRuntimeBinaryPath(
       paths.runtimePlatformDir,
@@ -178,10 +297,11 @@ export const makeSpeechToText = Effect.gen(function* () {
     return {
       available,
       runtimeStatus,
-      selectedModelId,
+      selectedModelId: config.selectedModelId,
       installedModels,
       catalog: [...SPEECH_TO_TEXT_MODEL_CATALOG],
       activeDownload: mutableState.activeDownload,
+      settings: config.settings,
       errorMessage:
         mutableState.errorMessage ??
         (!available ? "Speech-to-text is only enabled for local Sam's Code servers." : null),
@@ -192,6 +312,10 @@ export const makeSpeechToText = Effect.gen(function* () {
     const state = await resolveCurrentState();
     await Effect.runPromise(PubSub.publish(stateChangesPubSub, state).pipe(Effect.asVoid));
     return state;
+  };
+
+  const publishSessionEvent = async (event: SpeechToTextSessionEvent): Promise<void> => {
+    await Effect.runPromise(PubSub.publish(sessionEventsPubSub, event).pipe(Effect.asVoid));
   };
 
   const ensureRuntimeInstalledInternal = async (): Promise<string> => {
@@ -298,6 +422,272 @@ export const makeSpeechToText = Effect.gen(function* () {
     }
   };
 
+  const resolveSelectedModelResources = async (): Promise<{
+    binaryPath: string;
+    modelId: string;
+    modelName: string;
+    modelPath: string;
+    settings: SpeechToTextSettings;
+    language: string;
+    prompt: string;
+    vadModelPath: string | undefined;
+  }> => {
+    if (!available) {
+      throw new Error("Speech-to-text is unavailable on this server.");
+    }
+
+    const config = await loadResolvedConfig();
+    const selectedModelId = config.selectedModelId;
+    if (!selectedModelId) {
+      throw new Error("Install and select a speech-to-text model first.");
+    }
+
+    const modelEntry = getSpeechToTextCatalogEntry(selectedModelId);
+    if (!modelEntry) {
+      throw new Error("Selected speech-to-text model is no longer supported.");
+    }
+
+    const modelPath = path.join(paths.modelsDir, modelEntry.fileName);
+    if (!(await fileExists(modelPath))) {
+      throw new Error("Selected speech-to-text model is not installed.");
+    }
+
+    const binaryPath = await downloadMutex.run(() => ensureRuntimeInstalledInternal());
+    const language = getLanguageForModel(config.settings, selectedModelId);
+    const prompt = getPromptForSettings(config.settings);
+    const vadModelPath = config.settings.useVad
+      ? await downloadMutex.run(() =>
+          ensureVadModelInstalled({ paths, mutableState, publishState: () => publishState() }),
+        )
+      : undefined;
+
+    return {
+      binaryPath,
+      modelId: modelEntry.id,
+      modelName: modelEntry.name,
+      modelPath,
+      settings: config.settings,
+      language,
+      prompt,
+      vadModelPath,
+    };
+  };
+
+  const queueWarmup = async (): Promise<void> => {
+    if (warmupInFlight) {
+      return warmupInFlight;
+    }
+
+    warmupInFlight = (async () => {
+      try {
+        const resources = await resolveSelectedModelResources();
+        if (!resources.settings.warmupEnabled) {
+          return;
+        }
+
+        await runSpeechToTextWarmup({
+          binaryPath: resources.binaryPath,
+          modelPath: resources.modelPath,
+          tmpDir: paths.tmpDir,
+          language: resources.language,
+          prompt: resources.prompt,
+          useVad: resources.settings.useVad,
+          vadModelPath: resources.vadModelPath,
+        });
+      } catch {
+        // Best effort only.
+      } finally {
+        warmupInFlight = null;
+      }
+    })();
+
+    return warmupInFlight;
+  };
+
+  const transcribeBuffers = async (buffers: ReadonlyArray<Buffer>): Promise<string> => {
+    const resources = await resolveSelectedModelResources();
+    const outputBasePath = path.join(paths.tmpDir, `${Date.now()}-${randomUUID()}-whisper-output`);
+    const wavPath = path.join(paths.tmpDir, `${Date.now()}-${randomUUID()}.wav`);
+
+    try {
+      await writePcmChunksToWavFile(wavPath, buffers);
+      const transcription = await transcribeWithWhisperCli({
+        binaryPath: resources.binaryPath,
+        modelPath: resources.modelPath,
+        audioPath: wavPath,
+        outputBasePath,
+        language: resources.language,
+        prompt: resources.prompt,
+        useVad: resources.settings.useVad,
+        vadModelPath: resources.vadModelPath,
+      });
+      return transcription.text;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Speech transcription failed while decoding audio.";
+      throw new Error(normalizeWhisperCliErrorMessage(message, resources.modelName), {
+        cause: error,
+      });
+    } finally {
+      await fs.rm(wavPath, { force: true }).catch(() => undefined);
+      await removeWhisperOutputFiles(outputBasePath);
+    }
+  };
+
+  const takeUtterance = (session: SpeechToTextSessionRecord) => {
+    if (session.utteranceBuffers.length === 0 || session.speechDurationMs < MIN_SPEECH_MS) {
+      session.detectedSpeech = false;
+      session.speechDurationMs = 0;
+      session.silenceDurationMs = 0;
+      session.utteranceBuffers = [];
+      session.utteranceDurationMs = 0;
+      session.partialText = "";
+      return null;
+    }
+
+    const utterance = {
+      segmentIndex: session.segmentIndex,
+      buffers: session.utteranceBuffers,
+    };
+    session.segmentIndex += 1;
+    session.detectedSpeech = false;
+    session.speechDurationMs = 0;
+    session.silenceDurationMs = 0;
+    session.utteranceBuffers = [];
+    session.utteranceDurationMs = 0;
+    session.partialText = "";
+    return utterance;
+  };
+
+  const maybeCompleteStoppingSession = (sessionId: string): void => {
+    void (async () => {
+      const session = sessions.get(sessionId);
+      if (!session || !session.isStopping) {
+        return;
+      }
+
+      const finalizeChain = session.finalizeChain;
+      await finalizeChain.catch(() => undefined);
+      const latest = sessions.get(sessionId);
+      if (!latest || !latest.isStopping || latest.finalizeChain !== finalizeChain) {
+        return;
+      }
+
+      if (latest.utteranceBuffers.length > 0) {
+        return;
+      }
+
+      const finalText = latest.committedSegments.join(" ").replace(/\s+/g, " ").trim();
+      if (finalText.length > 0) {
+        const finalEvent: SpeechToTextSessionFinalEvent = {
+          type: "final",
+          sessionId,
+          text: finalText,
+          elapsedMs: Date.now() - latest.startedAt,
+        };
+        await publishSessionEvent(finalEvent);
+        await publishSessionEvent({
+          type: "ended",
+          sessionId,
+          reason: "completed",
+        });
+      } else {
+        await publishSessionEvent({
+          type: "error",
+          sessionId,
+          message: latest.lastError ?? "No speech was detected in the recording.",
+        });
+        await publishSessionEvent({
+          type: "ended",
+          sessionId,
+          reason: latest.lastError ? "error" : "cancelled",
+        });
+      }
+
+      sessions.delete(sessionId);
+    })();
+  };
+
+  const queueFinalizeUtterance = (
+    session: SpeechToTextSessionRecord,
+    buffers: ReadonlyArray<Buffer>,
+    segmentIndex: number,
+  ): void => {
+    session.finalizeChain = session.finalizeChain.then(async () => {
+      try {
+        const text = await transcriptionMutex.run(() => transcribeBuffers(buffers));
+        if (text.trim().length === 0) {
+          return;
+        }
+
+        const latest = sessions.get(session.id);
+        if (!latest) {
+          return;
+        }
+        latest.committedSegments.push(text.trim());
+        const event: SpeechToTextSessionSegmentCommittedEvent = {
+          type: "segmentCommitted",
+          sessionId: session.id,
+          segmentIndex,
+          text: text.trim(),
+        };
+        await publishSessionEvent(event);
+      } catch (error) {
+        const latest = sessions.get(session.id);
+        if (latest) {
+          latest.lastError =
+            error instanceof Error ? error.message : "Speech transcription failed.";
+          await publishSessionEvent({
+            type: "error",
+            sessionId: session.id,
+            message: latest.lastError,
+          });
+        }
+      }
+    });
+
+    if (session.isStopping) {
+      maybeCompleteStoppingSession(session.id);
+    }
+  };
+
+  const queuePartialPreview = (session: SpeechToTextSessionRecord): void => {
+    const now = Date.now();
+    if (now - session.previewQueuedAtMs < PREVIEW_INTERVAL_MS) {
+      return;
+    }
+    if (session.utteranceDurationMs < PREVIEW_MIN_AUDIO_MS) {
+      return;
+    }
+    session.previewQueuedAtMs = now;
+    const snapshotBuffers = [...session.utteranceBuffers];
+    const snapshotSegmentIndex = session.segmentIndex;
+
+    void transcriptionMutex
+      .run(() => transcribeBuffers(snapshotBuffers))
+      .then(async (text) => {
+        const latest = sessions.get(session.id);
+        if (!latest || latest.segmentIndex !== snapshotSegmentIndex) {
+          return;
+        }
+        const normalized = text.trim();
+        if (latest.partialText === normalized) {
+          return;
+        }
+        latest.partialText = normalized;
+        const event: SpeechToTextSessionPartialEvent = {
+          type: "partial",
+          sessionId: latest.id,
+          segmentIndex: snapshotSegmentIndex,
+          text: normalized,
+        };
+        await publishSessionEvent(event);
+      })
+      .catch(() => undefined);
+  };
+
   return {
     start: Effect.tryPromise(async () => {
       if (started) {
@@ -311,6 +701,7 @@ export const makeSpeechToText = Effect.gen(function* () {
         removeMatchingTemporaryEntries(paths.runtimeRootDir),
       ]);
       await publishState();
+      void queueWarmup();
     }),
     getState: Effect.tryPromise(() => resolveCurrentState()),
     downloadModel: (input) =>
@@ -367,9 +758,18 @@ export const makeSpeechToText = Effect.gen(function* () {
               },
             });
             await fs.rename(downloadPath, installedPath);
+            const config = await loadResolvedConfig();
+            if (!config.selectedModelId) {
+              await saveConfig({
+                ...config,
+                selectedModelId: entry.id,
+              });
+            }
             mutableState.activeDownload = null;
             mutableState.errorMessage = null;
-            return publishState();
+            const state = await publishState();
+            void queueWarmup();
+            return state;
           } catch (error) {
             const message = error instanceof Error ? error.message : "Model download failed.";
             mutableState.activeDownload = null;
@@ -391,9 +791,9 @@ export const makeSpeechToText = Effect.gen(function* () {
         await fs
           .rm(path.join(paths.modelsDir, entry.fileName), { force: true })
           .catch(() => undefined);
-        const config = await configStore.load();
+        const config = await loadConfig();
         if (config.selectedModelId === entry.id) {
-          await configStore.save({ selectedModelId: null });
+          await saveConfig({ ...config, selectedModelId: null });
         }
         mutableState.errorMessage = null;
         return publishState();
@@ -410,71 +810,135 @@ export const makeSpeechToText = Effect.gen(function* () {
           throw new Error("Install this speech-to-text model before selecting it.");
         }
 
-        await configStore.save({ selectedModelId: entry.id });
+        const config = await loadConfig();
+        await saveConfig({ ...config, selectedModelId: entry.id });
         mutableState.errorMessage = null;
-        return publishState();
+        const state = await publishState();
+        void queueWarmup();
+        return state;
       }),
-    transcribeWav: (input) =>
-      Effect.tryPromise(() =>
-        transcriptionMutex.run(async (): Promise<SpeechToTextTranscriptionResult> => {
-          if (!available) {
-            throw new Error("Speech-to-text is unavailable on this server.");
-          }
+    updatePreferences: (input) =>
+      Effect.tryPromise(async () => {
+        const config = await loadConfig();
+        await saveConfig({
+          ...config,
+          settings: input,
+        });
+        mutableState.errorMessage = null;
+        const state = await publishState();
+        void queueWarmup();
+        return state;
+      }),
+    startSession: Effect.tryPromise(async () => {
+      const resources = await resolveSelectedModelResources();
+      const sessionId = randomUUID();
+      const session = createEmptySessionRecord(sessionId);
+      sessions.set(sessionId, session);
+      mutableState.errorMessage = null;
+      await publishState();
+      const event: SpeechToTextSessionStartedEvent = {
+        type: "started",
+        sessionId,
+      };
+      await publishSessionEvent(event);
+      void resources;
+      return { sessionId };
+    }),
+    appendAudio: (input) =>
+      Effect.tryPromise(async () => {
+        const session = sessions.get(input.sessionId);
+        if (!session) {
+          throw new Error("Speech-to-text session not found.");
+        }
+        if (session.isStopping) {
+          return;
+        }
+        if (input.sequence !== session.nextSequence) {
+          throw new Error(
+            `Speech-to-text audio chunk was out of sequence (expected ${session.nextSequence}, got ${input.sequence}).`,
+          );
+        }
+        session.nextSequence += 1;
+        session.totalAudioMs += input.durationMs;
 
-          const snapshot = await resolveCurrentState();
-          const selectedModelId = snapshot.selectedModelId;
-          if (!selectedModelId) {
-            throw new Error("Select a speech-to-text model first.");
-          }
+        const chunk = decodePcmBase64(input.pcmBase64);
+        const rms = calculateChunkRms(chunk);
+        const settings = (await loadResolvedConfig()).settings;
+        const hasSpeech = isSpeechChunk({
+          rms,
+          alreadyDetectedSpeech: session.detectedSpeech,
+        });
 
-          const modelEntry = getSpeechToTextCatalogEntry(selectedModelId);
-          if (!modelEntry) {
-            throw new Error("Selected speech-to-text model is no longer supported.");
+        if (hasSpeech) {
+          session.detectedSpeech = true;
+          session.speechDurationMs += input.durationMs;
+          session.silenceDurationMs = 0;
+          session.utteranceBuffers.push(chunk);
+          session.utteranceDurationMs += input.durationMs;
+          if (settings.partialTranscriptsEnabled) {
+            queuePartialPreview(session);
           }
+          return;
+        }
 
-          const modelPath = path.join(paths.modelsDir, modelEntry.fileName);
-          if (!(await fileExists(modelPath))) {
-            throw new Error("Selected speech-to-text model is not installed.");
+        if (!session.detectedSpeech) {
+          return;
+        }
+
+        session.silenceDurationMs += input.durationMs;
+        session.utteranceBuffers.push(chunk);
+        session.utteranceDurationMs += input.durationMs;
+        if (settings.partialTranscriptsEnabled) {
+          queuePartialPreview(session);
+        }
+
+        if (
+          settings.endpointingEnabled &&
+          session.silenceDurationMs >= settings.endpointSilenceMs
+        ) {
+          const utterance = takeUtterance(session);
+          if (!utterance) {
+            return;
           }
+          queueFinalizeUtterance(session, utterance.buffers, utterance.segmentIndex);
+        }
+      }),
+    stopSession: (input) =>
+      Effect.tryPromise(async () => {
+        const session = sessions.get(input.sessionId);
+        if (!session) {
+          return;
+        }
+        if (session.isStopping) {
+          maybeCompleteStoppingSession(session.id);
+          return;
+        }
 
-          const wavBytes = decodeSpeechToTextWavBase64(input.wavBase64);
-          assertSpeechToTextWavPayload(wavBytes);
-          const runtimeBinaryPath = await downloadMutex.run(() => ensureRuntimeInstalledInternal());
-          const safeFileName = sanitizeSpeechToTextFileName(input.fileName);
-          const wavPath = path.join(paths.tmpDir, `${Date.now()}-${safeFileName}`);
-          const outputBasePath = path.join(paths.tmpDir, `${Date.now()}-whisper-output`);
-          await fs.writeFile(wavPath, wavBytes);
-          mutableState.errorMessage = null;
-
-          try {
-            const transcription = await transcribeWithWhisperCli({
-              binaryPath: runtimeBinaryPath,
-              modelPath,
-              audioPath: wavPath,
-              outputBasePath,
-            });
-            mutableState.errorMessage = null;
-            await publishState();
-            return {
-              text: transcription.text,
-              modelId: selectedModelId,
-              elapsedMs: transcription.elapsedMs,
-            };
-          } catch (error) {
-            const rawMessage =
-              error instanceof Error ? error.message : "Speech transcription failed.";
-            const message = normalizeWhisperCliErrorMessage(rawMessage, modelEntry.name);
-            mutableState.errorMessage = message;
-            await publishState();
-            throw new Error(message, { cause: error });
-          } finally {
-            await fs.rm(wavPath, { force: true }).catch(() => undefined);
-            await removeWhisperOutputFiles(outputBasePath);
-          }
-        }),
-      ),
+        session.isStopping = true;
+        const utterance = takeUtterance(session);
+        if (utterance) {
+          queueFinalizeUtterance(session, utterance.buffers, utterance.segmentIndex);
+        }
+        maybeCompleteStoppingSession(session.id);
+      }),
+    cancelSession: (input) =>
+      Effect.tryPromise(async () => {
+        const session = sessions.get(input.sessionId);
+        if (!session) {
+          return;
+        }
+        sessions.delete(input.sessionId);
+        await publishSessionEvent({
+          type: "ended",
+          sessionId: input.sessionId,
+          reason: "cancelled",
+        });
+      }),
     get streamChanges() {
       return Stream.fromPubSub(stateChangesPubSub);
+    },
+    get streamSessionEvents() {
+      return Stream.fromPubSub(sessionEventsPubSub);
     },
   } satisfies SpeechToTextShape;
 });

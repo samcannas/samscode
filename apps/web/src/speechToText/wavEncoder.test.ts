@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeMonoWav, resampleMonoPcmLinear } from "./wavEncoder";
+import { encodeMonoPcm16, resampleMonoPcmLinear } from "./wavEncoder";
 
 describe("speechToText wavEncoder", () => {
   it("resamples mono pcm to the target sample rate", () => {
@@ -10,19 +10,12 @@ describe("speechToText wavEncoder", () => {
     expect(output[0]).toBeCloseTo(0.25, 3);
   });
 
-  it("encodes a wav header for mono pcm", () => {
-    const wav = encodeMonoWav(new Float32Array([0, 0.5, -0.5]), 16_000);
-    const view = new DataView(wav);
-    const tag = (offset: number) =>
-      String.fromCharCode(
-        view.getUint8(offset),
-        view.getUint8(offset + 1),
-        view.getUint8(offset + 2),
-        view.getUint8(offset + 3),
-      );
+  it("encodes mono PCM16 data", () => {
+    const pcm = encodeMonoPcm16(new Float32Array([0, 0.5, -0.5]));
+    const view = new DataView(pcm.buffer);
 
-    expect(tag(0)).toBe("RIFF");
-    expect(tag(8)).toBe("WAVE");
-    expect(tag(36)).toBe("data");
+    expect(view.getInt16(0, true)).toBe(0);
+    expect(view.getInt16(2, true)).toBeGreaterThan(0);
+    expect(view.getInt16(4, true)).toBeLessThan(0);
   });
 });

@@ -92,6 +92,7 @@ function SettingsRouteView() {
   const speechToTextInstalledModels = speechToTextState?.installedModels ?? [];
   const speechToTextCatalog = speechToTextState?.catalog ?? [];
   const activeSpeechDownload = speechToTextState?.activeDownload ?? null;
+  const speechToTextSettings = speechToTextState?.settings ?? null;
   const runtimeStatusLabel =
     speechToTextState?.runtimeStatus === "ready"
       ? "Ready"
@@ -186,6 +187,23 @@ function SettingsRouteView() {
       );
     },
     [runSpeechToTextAction],
+  );
+
+  const updateSpeechToTextPreferences = useCallback(
+    async (patch: Partial<NonNullable<typeof speechToTextSettings>>) => {
+      const api = ensureNativeApi();
+      const current = speechToTextState?.settings;
+      if (!current) {
+        return;
+      }
+      await runSpeechToTextAction("preferences", () =>
+        api.speechToText.updatePreferences({
+          ...current,
+          ...patch,
+        }),
+      );
+    },
+    [runSpeechToTextAction, speechToTextState?.settings],
   );
 
   const addCustomModel = useCallback(
@@ -700,6 +718,172 @@ function SettingsRouteView() {
                     </SelectPopup>
                   </Select>
                 </div>
+
+                {speechToTextSettings ? (
+                  <div className="space-y-4 rounded-lg border border-border bg-background px-3 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Speech-to-text preferences
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Tune latency, endpointing, and dictation quality defaults.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-foreground">Language</p>
+                        <Select
+                          value={speechToTextSettings.language}
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            void updateSpeechToTextPreferences({ language: value });
+                          }}
+                        >
+                          <SelectTrigger className="w-full" disabled={speechToTextBusyKey !== null}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="auto">Auto detect</SelectItem>
+                            <SelectItem value="en">English</SelectItem>
+                          </SelectPopup>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-foreground">Quality profile</p>
+                        <Select
+                          value={speechToTextSettings.qualityProfile}
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            void updateSpeechToTextPreferences({
+                              qualityProfile: value as typeof speechToTextSettings.qualityProfile,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-full" disabled={speechToTextBusyKey !== null}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="fast">Fast</SelectItem>
+                            <SelectItem value="balanced">Balanced</SelectItem>
+                            <SelectItem value="quality">Quality</SelectItem>
+                          </SelectPopup>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Endpointing</p>
+                          <p className="text-xs text-muted-foreground">
+                            Automatically commit utterances after trailing silence.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={speechToTextSettings.endpointingEnabled}
+                          disabled={speechToTextBusyKey !== null}
+                          onCheckedChange={(checked) =>
+                            void updateSpeechToTextPreferences({ endpointingEnabled: checked })
+                          }
+                          aria-label="Enable speech-to-text endpointing"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            Voice activity detector
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Use whisper.cpp VAD during transcription for cleaner utterances.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={speechToTextSettings.useVad}
+                          disabled={speechToTextBusyKey !== null}
+                          onCheckedChange={(checked) =>
+                            void updateSpeechToTextPreferences({ useVad: checked })
+                          }
+                          aria-label="Enable speech-to-text VAD"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            Live partial transcripts
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Show unstable transcript previews while you are still speaking.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={speechToTextSettings.partialTranscriptsEnabled}
+                          disabled={speechToTextBusyKey !== null}
+                          onCheckedChange={(checked) =>
+                            void updateSpeechToTextPreferences({
+                              partialTranscriptsEnabled: checked,
+                            })
+                          }
+                          aria-label="Enable live partial transcripts"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Model warmup</p>
+                          <p className="text-xs text-muted-foreground">
+                            Prewarm the selected model to reduce cold-start latency.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={speechToTextSettings.warmupEnabled}
+                          disabled={speechToTextBusyKey !== null}
+                          onCheckedChange={(checked) =>
+                            void updateSpeechToTextPreferences({ warmupEnabled: checked })
+                          }
+                          aria-label="Enable speech-to-text model warmup"
+                        />
+                      </div>
+                    </div>
+
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-medium text-foreground">
+                        Endpoint silence (ms)
+                      </span>
+                      <Input
+                        type="number"
+                        min={150}
+                        step={50}
+                        value={speechToTextSettings.endpointSilenceMs}
+                        disabled={speechToTextBusyKey !== null}
+                        onChange={(event) => {
+                          const nextValue = Number(event.currentTarget.value);
+                          if (!Number.isFinite(nextValue)) {
+                            return;
+                          }
+                          void updateSpeechToTextPreferences({
+                            endpointSilenceMs: Math.max(150, Math.round(nextValue)),
+                          });
+                        }}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-medium text-foreground">Prompt</span>
+                      <textarea
+                        className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
+                        value={speechToTextSettings.prompt}
+                        disabled={speechToTextBusyKey !== null}
+                        onChange={(event) => {
+                          void updateSpeechToTextPreferences({ prompt: event.currentTarget.value });
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <div>
