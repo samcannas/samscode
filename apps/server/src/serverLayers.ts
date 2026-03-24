@@ -128,6 +128,6 @@ export function makeServerRuntimeServicesLayer() {
     gitManagerLayer,
     terminalLayer,
     KeybindingsLive,
-    SpeechToTextLive,
+    SpeechToTextLive.pipe(Layer.provide(textGenerationLayer)),
   ).pipe(Layer.provideMerge(NodeServices.layer));
 }

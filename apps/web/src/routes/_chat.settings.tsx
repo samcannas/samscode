@@ -25,8 +25,11 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
   Select,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectPopup,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
@@ -112,11 +115,35 @@ function SettingsRouteView() {
     settings.customCodexModels,
     settings.textGenerationModel,
   );
+  const speechCleanupCodexModelOptions = getAppModelOptions(
+    "codex",
+    settings.customCodexModels,
+    speechToTextSettings?.cleanupModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
+  );
+  const speechCleanupClaudeModelOptions = getAppModelOptions(
+    "claudeAgent",
+    settings.customClaudeModels,
+    speechToTextSettings?.cleanupModel ?? undefined,
+  );
+  const speechCleanupModelOptions = [
+    ...speechCleanupCodexModelOptions.map((option) => ({ ...option, provider: "codex" as const })),
+    ...speechCleanupClaudeModelOptions.map((option) => ({
+      ...option,
+      provider: "claudeAgent" as const,
+    })),
+  ];
   const selectedGitTextGenerationModelLabel =
     gitTextGenerationModelOptions.find(
       (option) =>
         option.slug === (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL),
     )?.name ?? settings.textGenerationModel;
+  const selectedCleanupModeLabel =
+    speechToTextSettings?.refinementMode === "draft-only" ? "STT only" : "STT + cleanup";
+  const selectedSpeechCleanupModelLabel =
+    speechCleanupModelOptions.find((option) => option.slug === speechToTextSettings?.cleanupModel)
+      ?.name ??
+    speechToTextSettings?.cleanupModel ??
+    selectedGitTextGenerationModelLabel;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -720,13 +747,64 @@ function SettingsRouteView() {
                 </div>
 
                 {speechToTextSettings ? (
+                  <div className="rounded-lg border border-border bg-background px-3 py-3">
+                    <div className="mb-2">
+                      <p className="text-sm font-medium text-foreground">
+                        Selected refinement model
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Model used for transcript cleanup when STT + cleanup is enabled.
+                      </p>
+                    </div>
+                    <Select
+                      value={speechToTextSettings.cleanupModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL}
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        void updateSpeechToTextPreferences({ cleanupModel: value });
+                      }}
+                    >
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label="Selected refinement model"
+                        disabled={speechToTextBusyKey !== null}
+                      >
+                        <SelectValue>{selectedSpeechCleanupModelLabel}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        <SelectGroup>
+                          <SelectGroupLabel>Codex</SelectGroupLabel>
+                          {speechCleanupCodexModelOptions.map((option) => (
+                            <SelectItem key={`codex:${option.slug}`} value={option.slug}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                        {speechCleanupClaudeModelOptions.length > 0 ? (
+                          <>
+                            <SelectSeparator />
+                            <SelectGroup>
+                              <SelectGroupLabel>Claude</SelectGroupLabel>
+                              {speechCleanupClaudeModelOptions.map((option) => (
+                                <SelectItem key={`claude:${option.slug}`} value={option.slug}>
+                                  {option.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </>
+                        ) : null}
+                      </SelectPopup>
+                    </Select>
+                  </div>
+                ) : null}
+
+                {speechToTextSettings ? (
                   <div className="space-y-4 rounded-lg border border-border bg-background px-3 py-3">
                     <div>
                       <p className="text-sm font-medium text-foreground">
                         Speech-to-text preferences
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Tune latency, endpointing, and dictation quality defaults.
+                        Configure one-pass transcription and optional transcript cleanup.
                       </p>
                     </div>
 
@@ -773,7 +851,10 @@ function SettingsRouteView() {
                       </div>
 
                       <div>
-                        <p className="mb-2 text-xs font-medium text-foreground">Refinement</p>
+                        <p className="mb-2 text-xs font-medium text-foreground">Cleanup</p>
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          The selected speech-to-text model always produces the final transcript.
+                        </p>
                         <Select
                           value={speechToTextSettings.refinementMode}
                           onValueChange={(value) => {
@@ -784,34 +865,17 @@ function SettingsRouteView() {
                           }}
                         >
                           <SelectTrigger className="w-full" disabled={speechToTextBusyKey !== null}>
-                            <SelectValue />
+                            <SelectValue>{selectedCleanupModeLabel}</SelectValue>
                           </SelectTrigger>
                           <SelectPopup>
-                            <SelectItem value="draft-only">Fastest</SelectItem>
-                            <SelectItem value="refine-on-stop">Refine on stop</SelectItem>
+                            <SelectItem value="draft-only">STT only</SelectItem>
+                            <SelectItem value="refine-on-stop">STT + cleanup</SelectItem>
                           </SelectPopup>
                         </Select>
                       </div>
                     </div>
 
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Endpointing</p>
-                          <p className="text-xs text-muted-foreground">
-                            Split long dictation into draft-sized segments while you speak.
-                          </p>
-                        </div>
-                        <Switch
-                          checked={speechToTextSettings.endpointingEnabled}
-                          disabled={speechToTextBusyKey !== null}
-                          onCheckedChange={(checked) =>
-                            void updateSpeechToTextPreferences({ endpointingEnabled: checked })
-                          }
-                          aria-label="Enable speech-to-text endpointing"
-                        />
-                      </div>
-
                       <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                         <div>
                           <p className="text-sm font-medium text-foreground">
@@ -833,27 +897,6 @@ function SettingsRouteView() {
 
                       <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                         <div>
-                          <p className="text-sm font-medium text-foreground">
-                            Live partial transcripts
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Show unstable transcript previews while you are still speaking.
-                          </p>
-                        </div>
-                        <Switch
-                          checked={speechToTextSettings.partialTranscriptsEnabled}
-                          disabled={speechToTextBusyKey !== null}
-                          onCheckedChange={(checked) =>
-                            void updateSpeechToTextPreferences({
-                              partialTranscriptsEnabled: checked,
-                            })
-                          }
-                          aria-label="Enable live partial transcripts"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                        <div>
                           <p className="text-sm font-medium text-foreground">Model warmup</p>
                           <p className="text-xs text-muted-foreground">
                             Prewarm the selected model to reduce cold-start latency.
@@ -869,28 +912,6 @@ function SettingsRouteView() {
                         />
                       </div>
                     </div>
-
-                    <label className="block">
-                      <span className="mb-2 block text-xs font-medium text-foreground">
-                        Endpoint silence (ms)
-                      </span>
-                      <Input
-                        type="number"
-                        min={150}
-                        step={50}
-                        value={speechToTextSettings.endpointSilenceMs}
-                        disabled={speechToTextBusyKey !== null}
-                        onChange={(event) => {
-                          const nextValue = Number(event.currentTarget.value);
-                          if (!Number.isFinite(nextValue)) {
-                            return;
-                          }
-                          void updateSpeechToTextPreferences({
-                            endpointSilenceMs: Math.max(150, Math.round(nextValue)),
-                          });
-                        }}
-                      />
-                    </label>
 
                     <label className="block">
                       <span className="mb-2 block text-xs font-medium text-foreground">Prompt</span>

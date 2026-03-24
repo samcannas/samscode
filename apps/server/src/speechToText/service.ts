@@ -7,9 +7,7 @@ import type {
   SpeechToTextInstalledModel,
   SpeechToTextSessionEvent,
   SpeechToTextSessionFinalEvent,
-  SpeechToTextSessionSegmentCommittedEvent,
   SpeechToTextSessionStartedEvent,
-  SpeechToTextSessionPartialEvent,
   SpeechToTextAudioChunk,
   SpeechToTextSettings,
   SpeechToTextState,
@@ -17,6 +15,7 @@ import type {
 import { Effect, PubSub, ServiceMap, Stream } from "effect";
 
 import { ServerConfig } from "../config";
+import { TextGeneration } from "../git/Services/TextGeneration";
 import {
   DEFAULT_ENGLISH_SPEECH_TO_TEXT_MODEL_ID,
   DEFAULT_MULTILINGUAL_SPEECH_TO_TEXT_MODEL_ID,
@@ -25,14 +24,8 @@ import {
   SPEECH_TO_TEXT_MODEL_CATALOG,
 } from "./catalog";
 import { createSpeechToTextConfigStore } from "./configStore";
-import {
-  PREVIEW_INTERVAL_MS,
-  PREVIEW_MIN_AUDIO_MS,
-  isSpeechChunk,
-  MIN_SPEECH_MS,
-} from "./endpointing";
 import { downloadFileToPath } from "./downloadManager";
-import { calculateChunkRms, createWavBufferFromPcmChunks, decodePcmBase64 } from "./pcmWav";
+import { createWavBufferFromPcmChunks, decodePcmBase64 } from "./pcmWav";
 import { ensureVadModelInstalled } from "./resources";
 import {
   buildRuntimeArchiveTempPath,
@@ -52,6 +45,7 @@ import type {
   SpeechToTextSessionRecord,
   SpeechToTextShape,
 } from "./types";
+import { cleanupTranscriptWithLlm } from "./transcriptCleanup";
 import { createWhisperSidecarManager, resolveWhisperSidecarBinaryName } from "./whisperSidecar";
 
 export class SpeechToText extends ServiceMap.Service<SpeechToText, SpeechToTextShape>()(
@@ -179,19 +173,8 @@ function getDefaultDecodeThreads(): number {
   return Math.max(1, Math.min(available > 2 ? available - 1 : available, 8));
 }
 
-function supportsLivePartialPreview(modelId: string | null): boolean {
-  if (!modelId) {
-    return false;
-  }
-  const model = getSpeechToTextCatalogEntry(modelId);
-  if (!model) {
-    return false;
-  }
-  return model.sizeBytes <= 250 * 1024 * 1024;
-}
-
 function shouldUseSidecarVad(settings: SpeechToTextSettings): boolean {
-  return settings.useVad && !settings.endpointingEnabled;
+  return settings.useVad;
 }
 
 function createFinalMetrics(input: { session: SpeechToTextSessionRecord; decodeMs: number }) {
@@ -204,31 +187,16 @@ function createFinalMetrics(input: { session: SpeechToTextSessionRecord; decodeM
     decodeMs: input.decodeMs,
     draftDecodeMs: input.session.draftDecodeMsTotal,
     refinementDecodeMs: input.session.refinementDecodeMsTotal,
+    cleanupMs: input.session.cleanupMsTotal,
     totalChunks: input.session.nextSequence,
     totalBatches: input.session.totalBatches,
     endpointedSegmentCount: input.session.endpointedSegmentCount,
     draftPassCount: input.session.draftPassCount,
     refinementPassCount: input.session.refinementPassCount,
     engine: input.session.engine,
+    cleanupBackend: input.session.cleanupBackend,
+    cleanupModel: input.session.cleanupModel,
   };
-}
-
-function getDraftText(session: SpeechToTextSessionRecord): string {
-  return session.draftSegments.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-}
-
-function appendUtteranceToSessionAudio(
-  session: SpeechToTextSessionRecord,
-  buffers: ReadonlyArray<Buffer>,
-): void {
-  if (buffers.length === 0) {
-    return;
-  }
-  if (session.sessionAudioBuffers.length > 0) {
-    session.sessionAudioBuffers.push(Buffer.alloc(Math.round((16_000 * 2 * 220) / 1000)));
-  }
-  session.sessionAudioBuffers.push(...buffers);
-  session.endpointedSegmentCount += 1;
 }
 
 function createSessionRecord(input: {
@@ -270,16 +238,20 @@ function createSessionRecord(input: {
     finalTranscript: null,
     draftDecodeMsTotal: 0,
     refinementDecodeMsTotal: 0,
+    cleanupMsTotal: 0,
     draftPassCount: 0,
     refinementPassCount: 0,
     endpointedSegmentCount: 0,
+    cleanupBackend: null,
+    cleanupModel: null,
     finalizeChain: Promise.resolve(),
     lastError: null,
   };
 }
 
 export const makeSpeechToText = Effect.gen(function* () {
-  const { stateDir, mode, host } = yield* ServerConfig;
+  const { stateDir, mode, host, cwd } = yield* ServerConfig;
+  const textGeneration = yield* TextGeneration;
   const paths = resolveSpeechToTextPaths(stateDir);
   const configStore = createSpeechToTextConfigStore(paths.configPath);
   const stateChangesPubSub = yield* PubSub.unbounded<SpeechToTextState>();
@@ -554,31 +526,6 @@ export const makeSpeechToText = Effect.gen(function* () {
     return resolveModelResources(config.selectedModelId, config.settings);
   };
 
-  const resolveDraftResources = async (
-    selectedResources: SpeechToTextResolvedResources,
-  ): Promise<SpeechToTextResolvedResources | null> => {
-    if (selectedResources.language !== "en") {
-      return null;
-    }
-    if (selectedResources.modelId === "ggml-base.en.bin") {
-      return selectedResources;
-    }
-
-    const draftEntry = getSpeechToTextCatalogEntry("ggml-base.en.bin");
-    if (!draftEntry) {
-      return null;
-    }
-    if (!(await fileExists(path.join(paths.modelsDir, draftEntry.fileName)))) {
-      return null;
-    }
-
-    return resolveModelResources("ggml-base.en.bin", {
-      ...selectedResources.settings,
-      qualityProfile: "fast",
-      useVad: false,
-    });
-  };
-
   const queueWarmup = async (): Promise<void> => {
     if (warmupInFlight) {
       return warmupInFlight;
@@ -587,7 +534,6 @@ export const makeSpeechToText = Effect.gen(function* () {
     warmupInFlight = (async () => {
       try {
         const resources = await resolveSelectedModelResources();
-        const draftResources = await resolveDraftResources(resources);
         if (!resources.settings.warmupEnabled) {
           return;
         }
@@ -613,21 +559,6 @@ export const makeSpeechToText = Effect.gen(function* () {
           prompt: resources.prompt,
           qualityProfile: resources.settings.qualityProfile,
         });
-        if (draftResources) {
-          await sidecar.warm({
-            config: {
-              binaryPath: draftResources.sidecarBinaryPath,
-              modelPath: draftResources.modelPath,
-              threads: draftResources.threads,
-              useVad: shouldUseSidecarVad(draftResources.settings),
-              vadModelPath: draftResources.vadModelPath,
-              tmpDir: paths.tmpDir,
-            },
-            language: draftResources.language,
-            prompt: draftResources.prompt,
-            qualityProfile: "fast",
-          });
-        }
       } catch {
         // Best effort only.
       } finally {
@@ -671,119 +602,6 @@ export const makeSpeechToText = Effect.gen(function* () {
     }
   };
 
-  const takeUtterance = (session: SpeechToTextSessionRecord) => {
-    if (session.utteranceBuffers.length === 0 || session.speechDurationMs < MIN_SPEECH_MS) {
-      session.detectedSpeech = false;
-      session.speechDurationMs = 0;
-      session.silenceDurationMs = 0;
-      session.utteranceBuffers = [];
-      session.utteranceDurationMs = 0;
-      session.partialText = "";
-      session.previewPending = false;
-      return null;
-    }
-
-    const utterance = {
-      segmentIndex: session.segmentIndex,
-      buffers: session.utteranceBuffers,
-    };
-    session.segmentIndex += 1;
-    session.detectedSpeech = false;
-    session.speechDurationMs = 0;
-    session.silenceDurationMs = 0;
-    session.utteranceBuffers = [];
-    session.utteranceDurationMs = 0;
-    session.partialText = "";
-    session.previewPending = false;
-    return utterance;
-  };
-
-  const resolvePreviewResources = (
-    session: SpeechToTextSessionRecord,
-  ): SpeechToTextResolvedResources | null => {
-    if (session.draftResources) {
-      return session.draftResources;
-    }
-    return supportsLivePartialPreview(session.selectedModelId) ? session.primaryResources : null;
-  };
-
-  const queueDraftUtterance = (
-    session: SpeechToTextSessionRecord,
-    buffers: ReadonlyArray<Buffer>,
-    segmentIndex: number,
-  ): void => {
-    session.finalizeChain = session.finalizeChain.then(async () => {
-      try {
-        const draftResources =
-          session.draftResources ??
-          (session.settings.refinementMode === "draft-only" ? session.primaryResources : null);
-        if (!draftResources) {
-          return;
-        }
-
-        const draftResult = await transcriptionMutex.run(() =>
-          transcribeWithResources({
-            resources: draftResources,
-            buffers,
-            qualityProfile: "fast",
-          }),
-        );
-        const text = draftResult.text.trim();
-        if (text.length === 0) {
-          return;
-        }
-
-        const latest = sessions.get(session.id);
-        if (!latest) {
-          return;
-        }
-        latest.draftPassCount += 1;
-        latest.draftDecodeMsTotal += draftResult.decodeMs;
-        latest.draftSegments[segmentIndex] = text;
-        const event: SpeechToTextSessionSegmentCommittedEvent = {
-          type: "segmentCommitted",
-          sessionId: latest.id,
-          segmentIndex,
-          text,
-        };
-        await publishSessionEvent(event);
-
-        const draftText = getDraftText(latest);
-        if (draftText.length > 0 && draftText !== latest.insertedDraftText) {
-          latest.insertedDraftText = draftText;
-          const draftMetrics = createFinalMetrics({
-            session: latest,
-            decodeMs: draftResult.decodeMs,
-          });
-          console.info("[speech-to-text] draft metrics", {
-            sessionId: latest.id,
-            stage: "draft",
-            ...draftMetrics,
-          });
-          await publishSessionEvent({
-            type: "final",
-            stage: "draft",
-            sessionId: latest.id,
-            text: draftText,
-            elapsedMs: Date.now() - latest.startedAt,
-            metrics: draftMetrics,
-          });
-        }
-      } catch (error) {
-        const latest = sessions.get(session.id);
-        if (latest) {
-          latest.lastError =
-            error instanceof Error ? error.message : "Speech transcription failed.";
-          await publishSessionEvent({
-            type: "error",
-            sessionId: session.id,
-            message: latest.lastError,
-          });
-        }
-      }
-    });
-  };
-
   const queueSessionCompletion = (session: SpeechToTextSessionRecord): void => {
     session.finalizeChain = session.finalizeChain.then(async () => {
       const latest = sessions.get(session.id);
@@ -791,31 +609,77 @@ export const makeSpeechToText = Effect.gen(function* () {
         return;
       }
 
-      let finalText = getDraftText(latest);
+      let finalText = "";
       let finalStage: SpeechToTextSessionFinalEvent["stage"] = "single";
+      let cleanupFailed = false;
 
-      if (
-        latest.settings.refinementMode === "refine-on-stop" &&
-        latest.sessionAudioBuffers.length > 0
-      ) {
+      if (latest.sessionAudioBuffers.length > 0) {
         try {
-          const refinementResult = await transcriptionMutex.run(() =>
+          await publishSessionEvent({
+            type: "processing",
+            sessionId: latest.id,
+            phase: "transcribing",
+          });
+          const sttResult = await transcriptionMutex.run(() =>
             transcribeWithResources({
               resources: latest.primaryResources,
               buffers: latest.sessionAudioBuffers,
               qualityProfile: latest.primaryResources.settings.qualityProfile,
             }),
           );
-          const refinedText = refinementResult.text.trim();
+          const refinedText = sttResult.text.trim();
           latest.refinementPassCount += 1;
-          latest.refinementDecodeMsTotal += refinementResult.decodeMs;
+          latest.refinementDecodeMsTotal += sttResult.decodeMs;
           if (refinedText.length > 0) {
             finalText = refinedText;
-            finalStage = latest.insertedDraftText ? "refined" : "single";
+            finalStage = "single";
           }
         } catch (error) {
           latest.lastError =
             error instanceof Error ? error.message : "Speech transcription failed.";
+        }
+      }
+
+      if (
+        latest.settings.refinementMode === "refine-on-stop" &&
+        finalText.length > 0 &&
+        latest.lastError === null
+      ) {
+        const cleanupStartedAt = Date.now();
+        try {
+          await publishSessionEvent({
+            type: "processing",
+            sessionId: latest.id,
+            phase: "cleaningUp",
+          });
+          const cleanupResult = await cleanupTranscriptWithLlm({
+            textGeneration,
+            cwd,
+            transcript: finalText,
+            language: latest.language,
+            prompt: latest.prompt,
+            model: latest.settings.cleanupModel ?? undefined,
+          });
+          latest.cleanupMsTotal += Date.now() - cleanupStartedAt;
+          latest.cleanupBackend = cleanupResult.cleanupBackend;
+          latest.cleanupModel = cleanupResult.cleanupModel;
+          const cleanedText = cleanupResult.cleanedTranscript.trim();
+          if (cleanedText.length > 0) {
+            finalText = cleanedText;
+            finalStage =
+              latest.insertedDraftText || latest.refinementPassCount > 0 ? "refined" : "single";
+          }
+        } catch (error) {
+          cleanupFailed = true;
+          latest.cleanupMsTotal += Date.now() - cleanupStartedAt;
+          latest.cleanupBackend = latest.settings.cleanupModel ? "attempted" : null;
+          latest.cleanupModel = latest.settings.cleanupModel ?? null;
+          latest.lastError = error instanceof Error ? error.message : "Transcript cleanup failed.";
+          console.warn("[speech-to-text] cleanup failed", {
+            sessionId: latest.id,
+            cleanupModel: latest.settings.cleanupModel,
+            reason: latest.lastError,
+          });
         }
       }
 
@@ -825,7 +689,8 @@ export const makeSpeechToText = Effect.gen(function* () {
       if (latest.finalTranscript) {
         const metrics = createFinalMetrics({
           session: latest,
-          decodeMs: latest.refinementDecodeMsTotal || latest.draftDecodeMsTotal,
+          decodeMs:
+            latest.refinementDecodeMsTotal + latest.cleanupMsTotal || latest.draftDecodeMsTotal,
         });
         const finalEvent: SpeechToTextSessionFinalEvent = {
           type: "final",
@@ -850,7 +715,10 @@ export const makeSpeechToText = Effect.gen(function* () {
         await publishSessionEvent({
           type: "error",
           sessionId: latest.id,
-          message: latest.lastError ?? "No speech was detected in the recording.",
+          message:
+            latest.lastError && !cleanupFailed
+              ? latest.lastError
+              : (latest.lastError ?? "No speech was detected in the recording."),
         });
         await publishSessionEvent({
           type: "ended",
@@ -861,72 +729,6 @@ export const makeSpeechToText = Effect.gen(function* () {
 
       sessions.delete(latest.id);
     });
-  };
-
-  const queuePartialPreview = (session: SpeechToTextSessionRecord): void => {
-    if (session.isStopping) {
-      return;
-    }
-    const now = Date.now();
-    if (now - session.previewQueuedAtMs < PREVIEW_INTERVAL_MS) {
-      return;
-    }
-    if (session.utteranceDurationMs < PREVIEW_MIN_AUDIO_MS) {
-      return;
-    }
-    const previewResources = resolvePreviewResources(session);
-    if (!previewResources) {
-      return;
-    }
-    session.previewQueuedAtMs = now;
-    if (session.previewInFlight) {
-      session.previewPending = true;
-      return;
-    }
-    session.previewInFlight = true;
-    const snapshotBuffers = [...session.utteranceBuffers];
-    const snapshotSegmentIndex = session.segmentIndex;
-
-    void transcriptionMutex
-      .run(() =>
-        transcribeWithResources({
-          resources: previewResources,
-          buffers: snapshotBuffers,
-          qualityProfile: "fast",
-        }),
-      )
-      .then(async (result) => {
-        const latest = sessions.get(session.id);
-        if (!latest || latest.segmentIndex !== snapshotSegmentIndex) {
-          return;
-        }
-        const normalized = result.text.trim();
-        if (latest.partialText === normalized) {
-          return;
-        }
-        latest.partialText = normalized;
-        const event: SpeechToTextSessionPartialEvent = {
-          type: "partial",
-          sessionId: latest.id,
-          segmentIndex: snapshotSegmentIndex,
-          text: normalized,
-        };
-        await publishSessionEvent(event);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        const latest = sessions.get(session.id);
-        if (!latest) {
-          return;
-        }
-        latest.previewInFlight = false;
-        if (!latest.previewPending || latest.isStopping) {
-          latest.previewPending = false;
-          return;
-        }
-        latest.previewPending = false;
-        queuePartialPreview(latest);
-      });
   };
 
   const appendAudioChunkToSession = async (
@@ -944,48 +746,7 @@ export const makeSpeechToText = Effect.gen(function* () {
 
     session.nextSequence += 1;
     session.totalAudioMs += chunkInput.durationMs;
-
-    const chunk = decodePcmBase64(chunkInput.pcmBase64);
-    const rms = calculateChunkRms(chunk);
-    const hasSpeech = isSpeechChunk({
-      rms,
-      alreadyDetectedSpeech: session.detectedSpeech,
-    });
-
-    if (hasSpeech) {
-      session.detectedSpeech = true;
-      session.speechDurationMs += chunkInput.durationMs;
-      session.silenceDurationMs = 0;
-      session.utteranceBuffers.push(chunk);
-      session.utteranceDurationMs += chunkInput.durationMs;
-      if (session.settings.partialTranscriptsEnabled && resolvePreviewResources(session) !== null) {
-        queuePartialPreview(session);
-      }
-      return;
-    }
-
-    if (!session.detectedSpeech) {
-      return;
-    }
-
-    session.silenceDurationMs += chunkInput.durationMs;
-    session.utteranceBuffers.push(chunk);
-    session.utteranceDurationMs += chunkInput.durationMs;
-    if (session.settings.partialTranscriptsEnabled && resolvePreviewResources(session) !== null) {
-      queuePartialPreview(session);
-    }
-
-    if (
-      session.settings.endpointingEnabled &&
-      session.silenceDurationMs >= session.settings.endpointSilenceMs
-    ) {
-      const utterance = takeUtterance(session);
-      if (!utterance) {
-        return;
-      }
-      appendUtteranceToSessionAudio(session, utterance.buffers);
-      queueDraftUtterance(session, utterance.buffers, utterance.segmentIndex);
-    }
+    session.sessionAudioBuffers.push(decodePcmBase64(chunkInput.pcmBase64));
   };
 
   return {
@@ -1140,7 +901,6 @@ export const makeSpeechToText = Effect.gen(function* () {
       }),
     startSession: Effect.tryPromise(async () => {
       const resources = await resolveSelectedModelResources();
-      const draftResources = await resolveDraftResources(resources);
       await sidecar.ensureStarted({
         binaryPath: resources.sidecarBinaryPath,
         modelPath: resources.modelPath,
@@ -1162,35 +922,12 @@ export const makeSpeechToText = Effect.gen(function* () {
         prompt: resources.prompt,
         qualityProfile: resources.settings.qualityProfile,
       });
-      if (draftResources) {
-        void sidecar.ensureStarted({
-          binaryPath: draftResources.sidecarBinaryPath,
-          modelPath: draftResources.modelPath,
-          threads: draftResources.threads,
-          useVad: shouldUseSidecarVad(draftResources.settings),
-          vadModelPath: draftResources.vadModelPath,
-          tmpDir: paths.tmpDir,
-        });
-        void sidecar.warm({
-          config: {
-            binaryPath: draftResources.sidecarBinaryPath,
-            modelPath: draftResources.modelPath,
-            threads: draftResources.threads,
-            useVad: shouldUseSidecarVad(draftResources.settings),
-            vadModelPath: draftResources.vadModelPath,
-            tmpDir: paths.tmpDir,
-          },
-          language: draftResources.language,
-          prompt: draftResources.prompt,
-          qualityProfile: "fast",
-        });
-      }
       const sessionId = randomUUID();
       const session = createSessionRecord({
         id: sessionId,
         selectedModelId: resources.modelId,
         resources,
-        draftResources,
+        draftResources: null,
       });
       sessions.set(sessionId, session);
       mutableState.errorMessage = null;
@@ -1226,12 +963,6 @@ export const makeSpeechToText = Effect.gen(function* () {
 
         session.isStopping = true;
         session.stopRequestedAtMs = Date.now();
-        session.previewPending = false;
-        const utterance = takeUtterance(session);
-        if (utterance) {
-          appendUtteranceToSessionAudio(session, utterance.buffers);
-          queueDraftUtterance(session, utterance.buffers, utterance.segmentIndex);
-        }
         queueSessionCompletion(session);
       }),
     cancelSession: (input) =>

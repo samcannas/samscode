@@ -22,11 +22,6 @@ export interface UseSpeechToTextOptions {
     transcript: string,
     snapshot: SpeechToTextComposerSnapshot,
   ) => void | Promise<void>;
-  readonly replaceTranscript?: (
-    nextTranscript: string,
-    previousTranscript: string,
-    snapshot: SpeechToTextComposerSnapshot,
-  ) => void | Promise<void>;
   readonly isTerminalFocused: () => boolean;
   readonly isModalOpen: () => boolean;
 }
@@ -80,13 +75,6 @@ function canStartRecording(options: {
   );
 }
 
-function joinTranscriptPreview(
-  committedSegments: ReadonlyArray<string>,
-  partialText: string,
-): string {
-  return [...committedSegments, partialText].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-}
-
 export function useSpeechToText(options: UseSpeechToTextOptions) {
   const { state: speechToTextState } = useSpeechToTextState();
   const optionsRef = useRef(options);
@@ -96,15 +84,12 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
   const inFlightBatchPromisesRef = useRef<Set<Promise<void>>>(new Set());
   const pendingBatchRef = useRef<SpeechToTextAudioChunk[]>([]);
   const batchFlushTimerRef = useRef<number | null>(null);
-  const insertedTranscriptRef = useRef<string | null>(null);
-  const committedSegmentsRef = useRef<string[]>([]);
   const finalInsertedRef = useRef(false);
   const holdShortcutActiveRef = useRef(false);
   const stopInFlightRef = useRef(false);
   const stopTimerRef = useRef<number | null>(null);
-  const [phase, setPhase] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [phase, setPhase] = useState<"idle" | "recording" | "transcribing" | "cleaningUp">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [previewText, setPreviewText] = useState<string>("");
 
   useEffect(() => {
     optionsRef.current = options;
@@ -130,12 +115,9 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
     inFlightBatchPromisesRef.current = new Set();
     pendingBatchRef.current = [];
     clearBatchFlushTimer();
-    insertedTranscriptRef.current = null;
-    committedSegmentsRef.current = [];
     transcribeSnapshotRef.current = null;
     finalInsertedRef.current = false;
     stopInFlightRef.current = false;
-    setPreviewText("");
     setPhase("idle");
     holdShortcutActiveRef.current = false;
   }, [clearBatchFlushTimer]);
@@ -269,13 +251,10 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
       sessionIdRef.current = session.sessionId;
       recorderRef.current = recorder;
       transcribeSnapshotRef.current = snapshot;
-      insertedTranscriptRef.current = null;
-      committedSegmentsRef.current = [];
       inFlightBatchPromisesRef.current = new Set();
       pendingBatchRef.current = [];
       clearBatchFlushTimer();
       finalInsertedRef.current = false;
-      setPreviewText("");
       setErrorMessage(null);
       setPhase("recording");
       await recorder.start({
@@ -315,14 +294,8 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
         return;
       }
 
-      if (event.type === "partial") {
-        setPreviewText(joinTranscriptPreview(committedSegmentsRef.current, event.text));
-        return;
-      }
-
-      if (event.type === "segmentCommitted") {
-        committedSegmentsRef.current = [...committedSegmentsRef.current, event.text];
-        setPreviewText(joinTranscriptPreview(committedSegmentsRef.current, ""));
+      if (event.type === "processing") {
+        setPhase(event.phase === "cleaningUp" ? "cleaningUp" : "transcribing");
         return;
       }
 
@@ -334,7 +307,9 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
       }
 
       if (event.type === "final") {
-        setPreviewText(event.text);
+        if (finalInsertedRef.current) {
+          return;
+        }
         const latestSnapshot =
           transcribeSnapshotRef.current ?? optionsRef.current.readComposerSnapshot();
         if (!latestSnapshot) {
@@ -342,21 +317,9 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
           return;
         }
 
-        const previousTranscript = insertedTranscriptRef.current;
-        const insertOrReplace =
-          (event.stage === "refined" || event.stage === "single") &&
-          previousTranscript &&
-          previousTranscript !== event.text &&
-          optionsRef.current.replaceTranscript
-            ? optionsRef.current.replaceTranscript(event.text, previousTranscript, latestSnapshot)
-            : !finalInsertedRef.current || event.stage === "draft"
-              ? optionsRef.current.insertTranscript(event.text, latestSnapshot)
-              : Promise.resolve();
-
-        void Promise.resolve(insertOrReplace)
+        finalInsertedRef.current = true;
+        void Promise.resolve(optionsRef.current.insertTranscript(event.text, latestSnapshot))
           .then(() => {
-            insertedTranscriptRef.current = event.text;
-            finalInsertedRef.current = true;
             setErrorMessage(null);
           })
           .catch((error) => {
@@ -400,7 +363,7 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
 
   const buttonState = useMemo<SpeechToTextButtonState>(() => {
     if (phase === "recording") return "recording";
-    if (phase === "transcribing") return "transcribing";
+    if (phase === "transcribing" || phase === "cleaningUp") return "transcribing";
     if (errorMessage) return "error";
     if (
       !canStartRecording({
@@ -446,7 +409,8 @@ export function useSpeechToText(options: UseSpeechToTextOptions) {
     serverState: speechToTextState,
     buttonState,
     errorMessage,
-    previewText,
+    processingPhase:
+      phase === "cleaningUp" ? "cleaningUp" : phase === "transcribing" ? "transcribing" : null,
     isTranscribing: phase === "transcribing",
     onMicButtonClick,
     onShortcutKeyDown,

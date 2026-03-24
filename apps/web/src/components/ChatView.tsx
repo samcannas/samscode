@@ -1248,55 +1248,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     },
     [setPrompt],
   );
-  const replaceSpeechTranscript = useCallback(
-    (
-      nextTranscript: string,
-      previousTranscript: string,
-      snapshot: SpeechToTextComposerSnapshot,
-    ) => {
-      const previousInsertion = formatSpeechTranscriptForInsertion(
-        snapshot.value,
-        snapshot.expandedCursor,
-        previousTranscript,
-      );
-      const nextInsertion = formatSpeechTranscriptForInsertion(
-        snapshot.value,
-        snapshot.expandedCursor,
-        nextTranscript,
-      );
-      if (previousInsertion.length === 0 || nextInsertion.length === 0) {
-        return insertSpeechTranscript(nextTranscript, snapshot);
-      }
-
-      const currentPrompt = promptRef.current;
-      const windowStart = Math.max(0, snapshot.expandedCursor - previousInsertion.length - 4);
-      const windowEnd = Math.min(
-        currentPrompt.length,
-        snapshot.expandedCursor + previousInsertion.length + 64,
-      );
-      const targetWindow = currentPrompt.slice(windowStart, windowEnd);
-      const relativeIndex = targetWindow.indexOf(previousInsertion);
-      if (relativeIndex < 0) {
-        return insertSpeechTranscript(nextTranscript, snapshot);
-      }
-
-      const rangeStart = windowStart + relativeIndex;
-      const rangeEnd = rangeStart + previousInsertion.length;
-      const nextPrompt = replaceTextRange(currentPrompt, rangeStart, rangeEnd, nextInsertion);
-      const nextCollapsedCursor = collapseExpandedComposerCursor(
-        nextPrompt.text,
-        nextPrompt.cursor,
-      );
-      promptRef.current = nextPrompt.text;
-      setPrompt(nextPrompt.text);
-      setComposerCursor(nextCollapsedCursor);
-      setComposerTrigger(detectComposerTrigger(nextPrompt.text, nextPrompt.cursor));
-      window.requestAnimationFrame(() => {
-        composerEditorRef.current?.focusAt(nextCollapsedCursor);
-      });
-    },
-    [insertSpeechTranscript, setPrompt],
-  );
   const isModalOpen = useCallback(
     () => pullRequestDialogState !== null || document.querySelector('[aria-modal="true"]') !== null,
     [pullRequestDialogState],
@@ -1305,7 +1256,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     serverState: speechToTextServerState,
     buttonState: speechToTextButtonState,
     errorMessage: speechToTextErrorMessage,
-    previewText: speechToTextPreviewText,
+    processingPhase: speechToTextProcessingPhase,
     onMicButtonClick: onSpeechToTextMicButtonClick,
     onShortcutKeyDown: onSpeechToTextShortcutKeyDown,
     onShortcutKeyUp: onSpeechToTextShortcutKeyUp,
@@ -1313,7 +1264,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     canUseComposer: Boolean(activeThreadId),
     readComposerSnapshot: readSpeechToTextComposerSnapshot,
     insertTranscript: insertSpeechTranscript,
-    replaceTranscript: replaceSpeechTranscript,
     isTerminalFocused,
     isModalOpen,
   });
@@ -3899,9 +3849,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
                       data-chat-composer-actions="right"
                       className="flex shrink-0 items-center gap-2"
                     >
-                      {speechToTextPreviewText ? (
+                      {speechToTextProcessingPhase ? (
                         <span className="max-w-56 truncate text-xs text-muted-foreground/80">
-                          {speechToTextPreviewText}
+                          {speechToTextProcessingPhase === "cleaningUp"
+                            ? "Cleaning up..."
+                            : "Transcribing..."}
                         </span>
                       ) : null}
                       {speechToTextErrorMessage ? (

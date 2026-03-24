@@ -58,12 +58,25 @@ export interface BranchNameGenerationResult {
   branch: string;
 }
 
+export interface TranscriptCleanupInput {
+  cwd: string;
+  transcript: string;
+  prompt: string;
+  language?: string | undefined;
+  model?: string | undefined;
+}
+
+export interface TranscriptCleanupResult {
+  cleanedTranscript: string;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
   ): Promise<CommitMessageGenerationResult>;
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
+  cleanupTranscript(input: TranscriptCleanupInput): Promise<TranscriptCleanupResult>;
 }
 
 /**
@@ -90,6 +103,10 @@ export interface TextGenerationShape {
   readonly generateBranchName: (
     input: BranchNameGenerationInput,
   ) => Effect.Effect<BranchNameGenerationResult, TextGenerationError>;
+
+  readonly cleanupTranscript: (
+    input: TranscriptCleanupInput,
+  ) => Effect.Effect<TranscriptCleanupResult, TextGenerationError>;
 }
 
 /**

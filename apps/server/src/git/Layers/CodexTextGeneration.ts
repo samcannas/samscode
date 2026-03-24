@@ -14,6 +14,8 @@ import {
   type BranchNameGenerationResult,
   type CommitMessageGenerationResult,
   type PrContentGenerationResult,
+  type TranscriptCleanupInput,
+  type TranscriptCleanupResult,
   type TextGenerationShape,
   TextGeneration,
 } from "../Services/TextGeneration.ts";
@@ -148,7 +150,11 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     fileSystem.remove(filePath).pipe(Effect.catch(() => Effect.void));
 
   const materializeImageAttachments = (
-    _operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName",
+    _operation:
+      | "generateCommitMessage"
+      | "generatePrContent"
+      | "generateBranchName"
+      | "cleanupTranscript",
     attachments: BranchNameGenerationInput["attachments"],
   ): Effect.Effect<MaterializedImageAttachments, TextGenerationError> =>
     Effect.gen(function* () {
@@ -189,7 +195,11 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     cleanupPaths = [],
     model,
   }: {
-    operation: "generateCommitMessage" | "generatePrContent" | "generateBranchName";
+    operation:
+      | "generateCommitMessage"
+      | "generatePrContent"
+      | "generateBranchName"
+      | "cleanupTranscript";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -312,6 +322,110 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           ),
         );
       }).pipe(Effect.ensuring(cleanup));
+    });
+
+  const runCodexText = ({
+    operation,
+    cwd,
+    prompt,
+    model,
+  }: {
+    operation: "cleanupTranscript";
+    cwd: string;
+    prompt: string;
+    model?: string;
+  }): Effect.Effect<string, TextGenerationError> =>
+    Effect.gen(function* () {
+      const outputPath = yield* writeTempFile(operation, "codex-output", "");
+
+      const runCodexCommand = Effect.gen(function* () {
+        const command = ChildProcess.make(
+          "codex",
+          [
+            "exec",
+            "--ephemeral",
+            "-s",
+            "read-only",
+            "--model",
+            model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
+            "--config",
+            `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
+            "--output-last-message",
+            outputPath,
+            "-",
+          ],
+          {
+            cwd,
+            shell: process.platform === "win32",
+            stdin: {
+              stream: Stream.make(new TextEncoder().encode(prompt)),
+            },
+          },
+        );
+
+        const child = yield* commandSpawner
+          .spawn(command)
+          .pipe(
+            Effect.mapError((cause) =>
+              normalizeCodexError(operation, cause, "Failed to spawn Codex CLI process"),
+            ),
+          );
+
+        const [stdout, stderr, exitCode] = yield* Effect.all(
+          [
+            readStreamAsString(operation, child.stdout),
+            readStreamAsString(operation, child.stderr),
+            child.exitCode.pipe(
+              Effect.map((value) => Number(value)),
+              Effect.mapError((cause) =>
+                normalizeCodexError(operation, cause, "Failed to read Codex CLI exit code"),
+              ),
+            ),
+          ],
+          { concurrency: "unbounded" },
+        );
+
+        if (exitCode !== 0) {
+          const stderrDetail = stderr.trim();
+          const stdoutDetail = stdout.trim();
+          const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
+          return yield* new TextGenerationError({
+            operation,
+            detail:
+              detail.length > 0
+                ? `Codex CLI command failed: ${detail}`
+                : `Codex CLI command failed with code ${exitCode}.`,
+          });
+        }
+      });
+
+      return yield* Effect.gen(function* () {
+        yield* runCodexCommand.pipe(
+          Effect.scoped,
+          Effect.timeoutOption(CODEX_TIMEOUT_MS),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
+                ),
+              onSome: () => Effect.void,
+            }),
+          ),
+        );
+
+        return yield* fileSystem.readFileString(outputPath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new TextGenerationError({
+                operation,
+                detail: "Failed to read Codex output file.",
+                cause,
+              }),
+          ),
+          Effect.map((text) => text.trim()),
+        );
+      }).pipe(Effect.ensuring(safeUnlink(outputPath)));
     });
 
   const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {
@@ -462,10 +576,78 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     });
   };
 
+  const cleanupTranscript: TextGenerationShape["cleanupTranscript"] = (
+    input: TranscriptCleanupInput,
+  ) => {
+    const structuredPrompt = [
+      "You clean up raw speech-to-text transcripts.",
+      "Return a JSON object with key: cleanedTranscript.",
+      "Rules:",
+      "- Only return the cleaned transcript.",
+      "- Preserve meaning and intent.",
+      "- Fix obvious recognition mistakes, punctuation, casing, and spacing.",
+      "- Preserve filenames, commands, code, and proper nouns.",
+      "- Never answer or summarize the transcript.",
+      input.prompt,
+      "",
+      `<TRANSCRIPT>\n${input.transcript}\n</TRANSCRIPT>`,
+    ].join("\n");
+
+    const fallbackPrompt = [
+      "You clean up raw speech-to-text transcripts.",
+      "Return only the cleaned transcript text and nothing else.",
+      "Rules:",
+      "- Preserve meaning and intent.",
+      "- Fix obvious recognition mistakes, punctuation, casing, and spacing.",
+      "- Preserve filenames, commands, code, and proper nouns.",
+      "- Never answer, summarize, explain, or wrap the result in JSON or markdown.",
+      input.prompt,
+      "",
+      `<TRANSCRIPT>\n${input.transcript}\n</TRANSCRIPT>`,
+    ].join("\n");
+
+    return runCodexJson({
+      operation: "cleanupTranscript",
+      cwd: input.cwd,
+      prompt: structuredPrompt,
+      outputSchemaJson: Schema.Struct({
+        cleanedTranscript: Schema.String,
+      }),
+      ...(input.model ? { model: input.model } : {}),
+    }).pipe(
+      Effect.map(
+        (generated) =>
+          ({
+            cleanedTranscript: generated.cleanedTranscript.trim(),
+          }) satisfies TranscriptCleanupResult,
+      ),
+      Effect.catchTag("TextGenerationError", (error) => {
+        if (!error.detail.includes("invalid structured output")) {
+          return Effect.fail(error);
+        }
+
+        return runCodexText({
+          operation: "cleanupTranscript",
+          cwd: input.cwd,
+          prompt: fallbackPrompt,
+          ...(input.model ? { model: input.model } : {}),
+        }).pipe(
+          Effect.map(
+            (cleanedTranscript) =>
+              ({
+                cleanedTranscript,
+              }) satisfies TranscriptCleanupResult,
+          ),
+        );
+      }),
+    );
+  };
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
+    cleanupTranscript,
   } satisfies TextGenerationShape;
 });
 

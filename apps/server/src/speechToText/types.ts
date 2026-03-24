@@ -86,9 +86,12 @@ export interface SpeechToTextSessionRecord {
   finalTranscript: string | null;
   draftDecodeMsTotal: number;
   refinementDecodeMsTotal: number;
+  cleanupMsTotal: number;
   draftPassCount: number;
   refinementPassCount: number;
   endpointedSegmentCount: number;
+  cleanupBackend: string | null;
+  cleanupModel: string | null;
   finalizeChain: Promise<void>;
   lastError: string | null;
 }

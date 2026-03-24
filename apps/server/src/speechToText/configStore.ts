@@ -16,6 +16,7 @@ export const DEFAULT_SPEECH_TO_TEXT_SETTINGS: SpeechToTextSettings = {
   warmupEnabled: true,
   qualityProfile: "balanced",
   refinementMode: "refine-on-stop",
+  cleanupModel: null,
 };
 
 const DEFAULT_CONFIG: SpeechToTextConfigRecord = {
@@ -48,6 +49,10 @@ function normalizeSettings(input: unknown): SpeechToTextSettings {
     record.refinementMode === "draft-only" || record.refinementMode === "refine-on-stop"
       ? record.refinementMode
       : DEFAULT_SPEECH_TO_TEXT_SETTINGS.refinementMode;
+  const cleanupModel =
+    typeof record.cleanupModel === "string" && record.cleanupModel.trim().length > 0
+      ? record.cleanupModel.trim()
+      : null;
 
   return {
     language,
@@ -69,6 +74,7 @@ function normalizeSettings(input: unknown): SpeechToTextSettings {
         : DEFAULT_SPEECH_TO_TEXT_SETTINGS.warmupEnabled,
     qualityProfile,
     refinementMode,
+    cleanupModel,
   };
 }
 

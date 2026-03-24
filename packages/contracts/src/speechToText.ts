@@ -71,6 +71,7 @@ export const SpeechToTextSettings = Schema.Struct({
   warmupEnabled: Schema.Boolean,
   qualityProfile: SpeechToTextQualityProfile,
   refinementMode: SpeechToTextRefinementMode,
+  cleanupModel: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type SpeechToTextSettings = typeof SpeechToTextSettings.Type;
 
@@ -147,6 +148,13 @@ export const SpeechToTextSessionStartedEvent = Schema.Struct({
 });
 export type SpeechToTextSessionStartedEvent = typeof SpeechToTextSessionStartedEvent.Type;
 
+export const SpeechToTextSessionProcessingEvent = Schema.Struct({
+  type: Schema.Literal("processing"),
+  sessionId: SpeechToTextSessionId,
+  phase: Schema.Literals(["transcribing", "cleaningUp"]),
+});
+export type SpeechToTextSessionProcessingEvent = typeof SpeechToTextSessionProcessingEvent.Type;
+
 export const SpeechToTextSessionPartialEvent = Schema.Struct({
   type: Schema.Literal("partial"),
   sessionId: SpeechToTextSessionId,
@@ -176,12 +184,15 @@ export const SpeechToTextSessionFinalEvent = Schema.Struct({
     decodeMs: NonNegativeInt,
     draftDecodeMs: NonNegativeInt,
     refinementDecodeMs: NonNegativeInt,
+    cleanupMs: NonNegativeInt,
     totalChunks: NonNegativeInt,
     totalBatches: NonNegativeInt,
     endpointedSegmentCount: NonNegativeInt,
     draftPassCount: NonNegativeInt,
     refinementPassCount: NonNegativeInt,
     engine: TrimmedNonEmptyString,
+    cleanupBackend: Schema.NullOr(TrimmedNonEmptyString),
+    cleanupModel: Schema.NullOr(TrimmedNonEmptyString),
   }),
 });
 export type SpeechToTextSessionFinalEvent = typeof SpeechToTextSessionFinalEvent.Type;
@@ -202,6 +213,7 @@ export type SpeechToTextSessionErrorEvent = typeof SpeechToTextSessionErrorEvent
 
 export const SpeechToTextSessionEvent = Schema.Union([
   SpeechToTextSessionStartedEvent,
+  SpeechToTextSessionProcessingEvent,
   SpeechToTextSessionPartialEvent,
   SpeechToTextSessionSegmentCommittedEvent,
   SpeechToTextSessionFinalEvent,
