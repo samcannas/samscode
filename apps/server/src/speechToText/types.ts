@@ -119,6 +119,8 @@ export interface RuntimePlatformTarget {
   readonly binaryName: string;
   readonly supported: boolean;
   readonly displayName: string;
+  readonly engineId: string;
+  readonly acceleration: "cpu" | "cuda" | "metal";
 }
 
 export interface RuntimeReleaseAsset {

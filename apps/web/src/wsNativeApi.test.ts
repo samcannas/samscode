@@ -351,6 +351,8 @@ describe("wsNativeApi", () => {
       .mockResolvedValueOnce({
         available: true,
         runtimeStatus: "ready",
+        runtimeBackend: "whisper.cpp-cpu",
+        runtimeAcceleration: "cpu",
         selectedModelId: null,
         installedModels: [],
         catalog: [],
@@ -385,6 +387,8 @@ describe("wsNativeApi", () => {
     requestMock.mockResolvedValue({
       available: true,
       runtimeStatus: "ready",
+      runtimeBackend: "whisper.cpp-cpu",
+      runtimeAcceleration: "cpu",
       selectedModelId: null,
       installedModels: [],
       catalog: [],

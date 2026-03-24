@@ -184,15 +184,11 @@ function createFinalMetrics(input: { session: SpeechToTextSessionRecord; decodeM
       input.session.stopRequestedAtMs !== null && input.session.lastAppendCompletedAtMs !== null
         ? Math.max(0, input.session.lastAppendCompletedAtMs - input.session.stopRequestedAtMs)
         : 0,
-    decodeMs: input.decodeMs,
-    draftDecodeMs: input.session.draftDecodeMsTotal,
-    refinementDecodeMs: input.session.refinementDecodeMsTotal,
+    totalFinalizeMs: input.decodeMs,
+    finalSttMs: input.session.refinementDecodeMsTotal,
     cleanupMs: input.session.cleanupMsTotal,
     totalChunks: input.session.nextSequence,
     totalBatches: input.session.totalBatches,
-    endpointedSegmentCount: input.session.endpointedSegmentCount,
-    draftPassCount: input.session.draftPassCount,
-    refinementPassCount: input.session.refinementPassCount,
     engine: input.session.engine,
     cleanupBackend: input.session.cleanupBackend,
     cleanupModel: input.session.cleanupModel,
@@ -202,13 +198,14 @@ function createFinalMetrics(input: { session: SpeechToTextSessionRecord; decodeM
 function createSessionRecord(input: {
   id: string;
   selectedModelId: string;
+  engine: string;
   resources: SpeechToTextResolvedResources;
   draftResources: SpeechToTextResolvedResources | null;
 }): SpeechToTextSessionRecord {
   return {
     id: input.id,
     startedAt: Date.now(),
-    engine: "whisper-server",
+    engine: input.engine,
     settings: input.resources.settings,
     selectedModelId: input.selectedModelId,
     language: input.resources.language,
@@ -259,7 +256,7 @@ export const makeSpeechToText = Effect.gen(function* () {
   const downloadMutex = createAsyncMutex();
   const transcriptionMutex = createAsyncMutex();
   const sidecar = createWhisperSidecarManager();
-  const runtimeTarget = resolveRuntimePlatformTarget();
+  const runtimeTargetPromise = resolveRuntimePlatformTarget();
   const available =
     process.env.SAMSCODE_ENABLE_REMOTE_STT === "1" ||
     process.env.SAMSCODE_ENABLE_REMOTE_STT === "true" ||
@@ -323,6 +320,7 @@ export const makeSpeechToText = Effect.gen(function* () {
     await ensureDirectories();
     const config = await loadResolvedConfig();
     const installedModels = await listInstalledModels(paths.modelsDir, config.selectedModelId);
+    const runtimeTarget = await runtimeTargetPromise;
 
     const runtimeBinaryPath = await resolveInstalledRuntimeBinaryPath(
       paths.runtimePlatformDir,
@@ -348,6 +346,8 @@ export const makeSpeechToText = Effect.gen(function* () {
     return {
       available,
       runtimeStatus,
+      runtimeBackend: runtimeTarget.engineId,
+      runtimeAcceleration: runtimeTarget.acceleration,
       selectedModelId: config.selectedModelId,
       installedModels,
       catalog: [...SPEECH_TO_TEXT_MODEL_CATALOG],
@@ -371,6 +371,7 @@ export const makeSpeechToText = Effect.gen(function* () {
 
   const ensureRuntimeInstalledInternal = async (): Promise<string> => {
     await ensureDirectories();
+    const runtimeTarget = await runtimeTargetPromise;
     const existingBinaryPath = await resolveInstalledRuntimeBinaryPath(
       paths.runtimePlatformDir,
       runtimeTarget.binaryName,
@@ -610,7 +611,7 @@ export const makeSpeechToText = Effect.gen(function* () {
       }
 
       let finalText = "";
-      let finalStage: SpeechToTextSessionFinalEvent["stage"] = "single";
+      let finalStage: SpeechToTextSessionFinalEvent["stage"] = "rawFinal";
       let cleanupFailed = false;
 
       if (latest.sessionAudioBuffers.length > 0) {
@@ -632,7 +633,7 @@ export const makeSpeechToText = Effect.gen(function* () {
           latest.refinementDecodeMsTotal += sttResult.decodeMs;
           if (refinedText.length > 0) {
             finalText = refinedText;
-            finalStage = "single";
+            finalStage = "rawFinal";
           }
         } catch (error) {
           latest.lastError =
@@ -666,8 +667,7 @@ export const makeSpeechToText = Effect.gen(function* () {
           const cleanedText = cleanupResult.cleanedTranscript.trim();
           if (cleanedText.length > 0) {
             finalText = cleanedText;
-            finalStage =
-              latest.insertedDraftText || latest.refinementPassCount > 0 ? "refined" : "single";
+            finalStage = "cleanedFinal";
           }
         } catch (error) {
           cleanupFailed = true;
@@ -901,6 +901,7 @@ export const makeSpeechToText = Effect.gen(function* () {
       }),
     startSession: Effect.tryPromise(async () => {
       const resources = await resolveSelectedModelResources();
+      const runtimeTarget = await runtimeTargetPromise;
       await sidecar.ensureStarted({
         binaryPath: resources.sidecarBinaryPath,
         modelPath: resources.modelPath,
@@ -926,6 +927,7 @@ export const makeSpeechToText = Effect.gen(function* () {
       const session = createSessionRecord({
         id: sessionId,
         selectedModelId: resources.modelId,
+        engine: runtimeTarget.engineId,
         resources,
         draftResources: null,
       });

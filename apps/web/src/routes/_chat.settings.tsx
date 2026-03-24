@@ -104,6 +104,10 @@ function SettingsRouteView() {
         : speechToTextState?.runtimeStatus === "error"
           ? "Error"
           : "Missing runtime";
+  const runtimeEngineLabel =
+    speechToTextState?.runtimeBackend && speechToTextState?.runtimeAcceleration
+      ? `${speechToTextState.runtimeBackend} (${speechToTextState.runtimeAcceleration})`
+      : null;
   const speechToTextRepairModelId = speechToTextState?.selectedModelId
     ? speechToTextState.selectedModelId
     : (speechToTextInstalledModels[0]?.id ??
@@ -679,7 +683,9 @@ function SettingsRouteView() {
                           ? "Speech-to-text is disabled for non-local servers unless explicitly enabled."
                           : activeSpeechDownload?.type === "runtime"
                             ? (activeSpeechDownload.message ?? "Downloading Whisper runtime.")
-                            : "The server manages the local whisper.cpp runtime automatically."}
+                            : runtimeEngineLabel
+                              ? `The server is using ${runtimeEngineLabel}.`
+                              : "The server manages the local whisper.cpp runtime automatically."}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start sm:self-auto">

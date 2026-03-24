@@ -134,6 +134,8 @@ it.effect("accepts speech-to-text push envelopes", () =>
       data: {
         available: true,
         runtimeStatus: "ready",
+        runtimeBackend: "whisper.cpp-cpu",
+        runtimeAcceleration: "cpu",
         selectedModelId: "ggml-base.en.bin",
         installedModels: [
           {

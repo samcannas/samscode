@@ -11,6 +11,30 @@ import type {
 
 const RUNTIME_MANIFEST_FILE_NAME = "runtime-manifest.json";
 
+function resolveAccelerationPreference(): "auto" | "cpu" | "cuda" | "metal" {
+  const raw = process.env.SAMSCODE_STT_ACCELERATION?.trim().toLowerCase();
+  if (raw === "cpu" || raw === "cuda" || raw === "metal") {
+    return raw;
+  }
+  return "auto";
+}
+
+async function detectCudaAvailability(): Promise<boolean> {
+  if (process.platform !== "win32" || process.arch !== "x64") {
+    return false;
+  }
+
+  try {
+    const result = await runProcess("nvidia-smi", ["-L"], {
+      timeoutMs: 3_000,
+      allowNonZeroExit: true,
+    });
+    return result.code === 0 && /GPU\s+\d+/i.test(result.stdout);
+  } catch {
+    return false;
+  }
+}
+
 export function resolveSpeechToTextPaths(stateDir: string): SpeechToTextPaths {
   const rootDir = path.join(stateDir, "speech-to-text");
   const runtimePlatformDir = path.join(rootDir, "runtime", `${process.platform}-${process.arch}`);
@@ -29,34 +53,56 @@ export function resolveSpeechToTextPaths(stateDir: string): SpeechToTextPaths {
   };
 }
 
-export function resolveRuntimePlatformTarget(): RuntimePlatformTarget {
+export async function resolveRuntimePlatformTarget(): Promise<RuntimePlatformTarget> {
+  const preference = resolveAccelerationPreference();
+
   if (process.platform === "win32" && process.arch === "x64") {
+    const useCuda =
+      preference === "cuda" || (preference === "auto" && (await detectCudaAvailability()));
     return {
       platformKey: `${process.platform}-${process.arch}`,
-      assetName: "whisper-bin-x64.zip",
+      assetName: useCuda ? "whisper-cublas-12.4.0-bin-x64.zip" : "whisper-blas-bin-x64.zip",
       binaryName: "whisper-cli.exe",
       supported: true,
-      displayName: "Windows x64",
+      displayName: useCuda ? "Windows x64 (CUDA)" : "Windows x64 (CPU BLAS)",
+      engineId: useCuda ? "whisper.cpp-cuda" : "whisper.cpp-cpu",
+      acceleration: useCuda ? "cuda" : "cpu",
     };
   }
 
   if (process.platform === "win32" && process.arch === "ia32") {
     return {
       platformKey: `${process.platform}-${process.arch}`,
-      assetName: "whisper-bin-Win32.zip",
+      assetName: "whisper-blas-bin-Win32.zip",
       binaryName: "whisper-cli.exe",
       supported: true,
-      displayName: "Windows x86",
+      displayName: "Windows x86 (CPU BLAS)",
+      engineId: "whisper.cpp-cpu",
+      acceleration: "cpu",
     };
   }
 
   if (process.platform === "linux" && process.arch === "x64") {
     return {
       platformKey: `${process.platform}-${process.arch}`,
-      assetName: "whisper-bin-x64.zip",
+      assetName: "whisper-blas-bin-x64.zip",
       binaryName: "whisper-cli",
       supported: true,
-      displayName: "Linux x64",
+      displayName: "Linux x64 (CPU BLAS)",
+      engineId: "whisper.cpp-cpu",
+      acceleration: "cpu",
+    };
+  }
+
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return {
+      platformKey: `${process.platform}-${process.arch}`,
+      assetName: "",
+      binaryName: "whisper-cli",
+      supported: false,
+      displayName: "macOS Apple Silicon (Metal)",
+      engineId: "whisper.cpp-metal",
+      acceleration: "metal",
     };
   }
 
@@ -66,6 +112,8 @@ export function resolveRuntimePlatformTarget(): RuntimePlatformTarget {
     binaryName: "whisper-cli",
     supported: false,
     displayName: `${process.platform} ${process.arch}`,
+    engineId: "whisper.cpp-cpu",
+    acceleration: "cpu",
   };
 }
 
@@ -142,7 +190,7 @@ export async function resolveRuntimeReleaseAsset(): Promise<{
   asset: { name: string; browser_download_url: string; size: number };
   tagName: string;
 }> {
-  const target = resolveRuntimePlatformTarget();
+  const target = await resolveRuntimePlatformTarget();
   if (!target.supported) {
     throw new Error(`Speech-to-text runtime download is not supported on ${target.displayName}.`);
   }
