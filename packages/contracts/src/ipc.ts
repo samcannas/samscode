@@ -47,7 +47,7 @@ import type {
 } from "./orchestration";
 import { EditorId } from "./editor";
 import type {
-  SpeechToTextAppendAudioInput,
+  SpeechToTextAppendAudioBatchInput,
   SpeechToTextCancelSessionInput,
   SpeechToTextDeleteModelInput,
   SpeechToTextDownloadModelInput,
@@ -179,7 +179,7 @@ export interface NativeApi {
     selectModel: (input: SpeechToTextSelectModelInput) => Promise<SpeechToTextState>;
     updatePreferences: (input: SpeechToTextUpdatePreferencesInput) => Promise<SpeechToTextState>;
     startSession: () => Promise<SpeechToTextStartSessionResult>;
-    appendAudio: (input: SpeechToTextAppendAudioInput) => Promise<void>;
+    appendAudioBatch: (input: SpeechToTextAppendAudioBatchInput) => Promise<void>;
     stopSession: (input: SpeechToTextStopSessionInput) => Promise<void>;
     cancelSession: (input: SpeechToTextCancelSessionInput) => Promise<void>;
     onStateChanged: (callback: (state: SpeechToTextState) => void) => () => void;

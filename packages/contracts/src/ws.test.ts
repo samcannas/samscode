@@ -156,6 +156,7 @@ it.effect("accepts speech-to-text push envelopes", () =>
           partialTranscriptsEnabled: true,
           warmupEnabled: true,
           qualityProfile: "balanced",
+          refinementMode: "refine-on-stop",
         },
         errorMessage: null,
       },

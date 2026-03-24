@@ -38,7 +38,7 @@ import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload } from "./server";
 import {
-  SpeechToTextAppendAudioInput,
+  SpeechToTextAppendAudioBatchInput,
   SpeechToTextCancelSessionInput,
   SpeechToTextDeleteModelInput,
   SpeechToTextDownloadModelInput,
@@ -94,7 +94,7 @@ export const WS_METHODS = {
   speechToTextSelectModel: "speechToText.selectModel",
   speechToTextUpdatePreferences: "speechToText.updatePreferences",
   speechToTextStartSession: "speechToText.startSession",
-  speechToTextAppendAudio: "speechToText.appendAudio",
+  speechToTextAppendAudioBatch: "speechToText.appendAudioBatch",
   speechToTextStopSession: "speechToText.stopSession",
   speechToTextCancelSession: "speechToText.cancelSession",
 } as const;
@@ -169,7 +169,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.speechToTextSelectModel, SpeechToTextSelectModelInput),
   tagRequestBody(WS_METHODS.speechToTextUpdatePreferences, SpeechToTextUpdatePreferencesInput),
   tagRequestBody(WS_METHODS.speechToTextStartSession, SpeechToTextStartSessionInput),
-  tagRequestBody(WS_METHODS.speechToTextAppendAudio, SpeechToTextAppendAudioInput),
+  tagRequestBody(WS_METHODS.speechToTextAppendAudioBatch, SpeechToTextAppendAudioBatchInput),
   tagRequestBody(WS_METHODS.speechToTextStopSession, SpeechToTextStopSessionInput),
   tagRequestBody(WS_METHODS.speechToTextCancelSession, SpeechToTextCancelSessionInput),
 ]);

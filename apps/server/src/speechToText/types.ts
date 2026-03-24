@@ -1,9 +1,10 @@
 import type {
   SpeechToTextActiveDownload,
-  SpeechToTextAppendAudioInput,
+  SpeechToTextAppendAudioBatchInput,
   SpeechToTextCancelSessionInput,
-  SpeechToTextSessionEvent,
   SpeechToTextSettings,
+  SpeechToTextAudioChunk,
+  SpeechToTextSessionEvent,
   SpeechToTextState,
   SpeechToTextStartSessionResult,
   SpeechToTextStopSessionInput,
@@ -21,7 +22,7 @@ export interface SpeechToTextShape {
     input: SpeechToTextUpdatePreferencesInput,
   ) => Effect.Effect<SpeechToTextState>;
   readonly startSession: Effect.Effect<SpeechToTextStartSessionResult>;
-  readonly appendAudio: (input: SpeechToTextAppendAudioInput) => Effect.Effect<void>;
+  readonly appendAudioBatch: (input: SpeechToTextAppendAudioBatchInput) => Effect.Effect<void>;
   readonly stopSession: (input: SpeechToTextStopSessionInput) => Effect.Effect<void>;
   readonly cancelSession: (input: SpeechToTextCancelSessionInput) => Effect.Effect<void>;
   readonly streamChanges: Stream.Stream<SpeechToTextState>;
@@ -55,23 +56,58 @@ export interface SpeechToTextMutableState {
 export interface SpeechToTextSessionRecord {
   readonly id: string;
   readonly startedAt: number;
+  readonly engine: string;
+  readonly settings: SpeechToTextSettings;
+  readonly selectedModelId: string;
+  readonly language: string;
+  readonly prompt: string;
+  readonly primaryResources: SpeechToTextResolvedResources;
+  readonly draftResources: SpeechToTextResolvedResources | null;
   nextSequence: number;
   segmentIndex: number;
   totalAudioMs: number;
+  totalBatches: number;
   partialText: string;
-  committedSegments: string[];
+  draftSegments: string[];
   isStopping: boolean;
   detectedSpeech: boolean;
   speechDurationMs: number;
   silenceDurationMs: number;
   utteranceBuffers: Buffer[];
   utteranceDurationMs: number;
+  sessionAudioBuffers: Buffer[];
   previewQueuedAtMs: number;
   previewInFlight: boolean;
   previewPending: boolean;
   completionPublished: boolean;
+  stopRequestedAtMs: number | null;
+  lastAppendCompletedAtMs: number | null;
+  insertedDraftText: string | null;
+  finalTranscript: string | null;
+  draftDecodeMsTotal: number;
+  refinementDecodeMsTotal: number;
+  draftPassCount: number;
+  refinementPassCount: number;
+  endpointedSegmentCount: number;
   finalizeChain: Promise<void>;
   lastError: string | null;
+}
+
+export interface SpeechToTextResolvedResources {
+  readonly sidecarBinaryPath: string;
+  readonly modelId: string;
+  readonly modelName: string;
+  readonly modelPath: string;
+  readonly settings: SpeechToTextSettings;
+  readonly language: string;
+  readonly prompt: string;
+  readonly threads: number;
+  readonly vadModelPath: string | undefined;
+}
+
+export interface SpeechToTextChunkAppendContext {
+  readonly session: SpeechToTextSessionRecord;
+  readonly chunk: SpeechToTextAudioChunk;
 }
 
 export interface RuntimePlatformTarget {

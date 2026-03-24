@@ -223,7 +223,8 @@ export function createWsNativeApi(): NativeApi {
       updatePreferences: (input) =>
         transport.request(WS_METHODS.speechToTextUpdatePreferences, input),
       startSession: () => transport.request(WS_METHODS.speechToTextStartSession),
-      appendAudio: (input) => transport.request(WS_METHODS.speechToTextAppendAudio, input),
+      appendAudioBatch: (input) =>
+        transport.request(WS_METHODS.speechToTextAppendAudioBatch, input),
       stopSession: (input) => transport.request(WS_METHODS.speechToTextStopSession, input),
       cancelSession: (input) => transport.request(WS_METHODS.speechToTextCancelSession, input),
       onStateChanged: (callback) =>

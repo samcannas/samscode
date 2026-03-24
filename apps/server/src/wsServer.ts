@@ -921,9 +921,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.speechToTextStartSession:
         return yield* speechToText.startSession;
 
-      case WS_METHODS.speechToTextAppendAudio: {
+      case WS_METHODS.speechToTextAppendAudioBatch: {
         const body = stripRequestTag(request.body);
-        return yield* speechToText.appendAudio(body);
+        return yield* speechToText.appendAudioBatch(body);
       }
 
       case WS_METHODS.speechToTextStopSession: {

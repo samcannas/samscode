@@ -56,11 +56,14 @@ export function createWavHeader(dataLength: number): Buffer {
   return buffer;
 }
 
+export function createWavBufferFromPcmChunks(chunks: ReadonlyArray<Buffer>): Buffer {
+  const pcm = concatPcmChunks(chunks);
+  return Buffer.concat([createWavHeader(pcm.byteLength), pcm]);
+}
+
 export async function writePcmChunksToWavFile(
   outputPath: string,
   chunks: ReadonlyArray<Buffer>,
 ): Promise<void> {
-  const pcm = concatPcmChunks(chunks);
-  const wav = Buffer.concat([createWavHeader(pcm.byteLength), pcm]);
-  await fs.writeFile(outputPath, wav);
+  await fs.writeFile(outputPath, createWavBufferFromPcmChunks(chunks));
 }

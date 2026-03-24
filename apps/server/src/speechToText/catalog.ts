@@ -8,6 +8,10 @@ function gb(value: number): number {
   return Math.round(value * 1024 * 1024 * 1024);
 }
 
+const WHISPER_CPP_HF_REPO = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+const DISTIL_WHISPER_HF_REPO =
+  "https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main";
+
 export const SPEECH_TO_TEXT_MODEL_CATALOG: ReadonlyArray<SpeechToTextModelCatalogEntry> = [
   {
     id: "ggml-tiny.bin",
@@ -52,7 +56,7 @@ export const SPEECH_TO_TEXT_MODEL_CATALOG: ReadonlyArray<SpeechToTextModelCatalo
     language: "english",
     recommended: true,
     description: "Recommended English model for fast, high-quality dictation.",
-    sizeBytes: mb(756),
+    sizeBytes: gb(1.52),
   },
   {
     id: "ggml-large-v2.bin",
@@ -96,6 +100,14 @@ const catalogById = new Map(SPEECH_TO_TEXT_MODEL_CATALOG.map((entry) => [entry.i
 
 export function getSpeechToTextCatalogEntry(modelId: string): SpeechToTextModelCatalogEntry | null {
   return catalogById.get(modelId) ?? null;
+}
+
+export function resolveSpeechToTextModelDownloadUrl(fileName: string): string {
+  if (fileName === "ggml-distil-large-v3.bin") {
+    return `${DISTIL_WHISPER_HF_REPO}/${encodeURIComponent(fileName)}?download=true`;
+  }
+
+  return `${WHISPER_CPP_HF_REPO}/${encodeURIComponent(fileName)}?download=true`;
 }
 
 export const DEFAULT_ENGLISH_SPEECH_TO_TEXT_MODEL_ID = "ggml-distil-large-v3.bin";

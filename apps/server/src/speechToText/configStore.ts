@@ -11,10 +11,11 @@ export const DEFAULT_SPEECH_TO_TEXT_SETTINGS: SpeechToTextSettings = {
     "Transcribe directly into the composer. Preserve code terms, filenames, commands, punctuation, and casing when spoken.",
   useVad: true,
   endpointingEnabled: true,
-  endpointSilenceMs: 450,
+  endpointSilenceMs: 300,
   partialTranscriptsEnabled: true,
   warmupEnabled: true,
   qualityProfile: "balanced",
+  refinementMode: "refine-on-stop",
 };
 
 const DEFAULT_CONFIG: SpeechToTextConfigRecord = {
@@ -43,6 +44,10 @@ function normalizeSettings(input: unknown): SpeechToTextSettings {
     record.qualityProfile === "quality"
       ? record.qualityProfile
       : DEFAULT_SPEECH_TO_TEXT_SETTINGS.qualityProfile;
+  const refinementMode =
+    record.refinementMode === "draft-only" || record.refinementMode === "refine-on-stop"
+      ? record.refinementMode
+      : DEFAULT_SPEECH_TO_TEXT_SETTINGS.refinementMode;
 
   return {
     language,
@@ -63,6 +68,7 @@ function normalizeSettings(input: unknown): SpeechToTextSettings {
         ? record.warmupEnabled
         : DEFAULT_SPEECH_TO_TEXT_SETTINGS.warmupEnabled,
     qualityProfile,
+    refinementMode,
   };
 }
 

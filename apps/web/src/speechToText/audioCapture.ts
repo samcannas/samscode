@@ -1,7 +1,10 @@
 import { arrayBufferToBase64, encodeMonoPcm16, resampleMonoPcmLinear } from "./wavEncoder";
 
 const TARGET_SAMPLE_RATE = 16_000;
-const PROCESSOR_BUFFER_SIZE = 2048;
+const CAPTURE_WORKLET_NAME = "samscode-pcm-capture";
+const CAPTURE_WORKLET_URL = new URL("./pcmCaptureProcessor.worklet.js", import.meta.url);
+const AUDIO_CONTEXT_CLOSE_TIMEOUT_MS = 1_000;
+const STREAM_CHUNK_MS = 120;
 
 export const MAX_SPEECH_TO_TEXT_RECORDING_MS = 90_000;
 
@@ -30,8 +33,11 @@ export class BrowserSpeechRecorder {
   private stream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
-  private processorNode: ScriptProcessorNode | null = null;
-  private muteNode: GainNode | null = null;
+  private processorNode: AudioWorkletNode | null = null;
+  private processorMessageListener: ((event: MessageEvent<Float32Array>) => void) | null = null;
+  private onChunk: ((chunk: StreamingSpeechChunk) => void) | null = null;
+  private pendingSourceChunks: Float32Array[] = [];
+  private pendingSourceSamples = 0;
   private startedAt = 0;
   private nextSequence = 0;
 
@@ -54,39 +60,43 @@ export class BrowserSpeechRecorder {
         },
       });
       const audioContext = new AudioContext();
+      await audioContext.audioWorklet.addModule(CAPTURE_WORKLET_URL.href);
       const sourceNode = audioContext.createMediaStreamSource(stream);
-      const processorNode = audioContext.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
-      const muteNode = audioContext.createGain();
-      muteNode.gain.value = 0;
+      const processorNode = new AudioWorkletNode(audioContext, CAPTURE_WORKLET_NAME, {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 1,
+      });
 
       this.startedAt = performance.now();
       this.nextSequence = 0;
+      this.onChunk = options.onChunk;
+      this.pendingSourceChunks = [];
+      this.pendingSourceSamples = 0;
 
-      processorNode.onaudioprocess = (event) => {
-        const channelData = event.inputBuffer.getChannelData(0);
-        const resampled = resampleMonoPcmLinear(
-          new Float32Array(channelData),
-          audioContext.sampleRate,
-          TARGET_SAMPLE_RATE,
+      const handleChunk = (event: MessageEvent<Float32Array>) => {
+        const channelData = event.data;
+        this.pendingSourceChunks.push(channelData);
+        this.pendingSourceSamples += channelData.length;
+
+        const minimumChunkSamples = Math.max(
+          1,
+          Math.round((audioContext.sampleRate * STREAM_CHUNK_MS) / 1000),
         );
-        const pcm16 = encodeMonoPcm16(resampled);
-        const durationMs = Math.max(1, Math.round((resampled.length / TARGET_SAMPLE_RATE) * 1000));
-        options.onChunk({
-          sequence: this.nextSequence++,
-          pcmBase64: arrayBufferToBase64(pcm16.buffer.slice(0)),
-          durationMs,
-        });
+        if (this.pendingSourceSamples >= minimumChunkSamples) {
+          this.flushPendingChunk(audioContext.sampleRate);
+        }
       };
+      processorNode.port.addEventListener("message", handleChunk);
+      processorNode.port.start();
 
       sourceNode.connect(processorNode);
-      processorNode.connect(muteNode);
-      muteNode.connect(audioContext.destination);
 
       this.stream = stream;
       this.audioContext = audioContext;
       this.sourceNode = sourceNode;
       this.processorNode = processorNode;
-      this.muteNode = muteNode;
+      this.processorMessageListener = handleChunk;
     } catch (error) {
       throw normalizeAudioCaptureError(error);
     }
@@ -98,6 +108,7 @@ export class BrowserSpeechRecorder {
     }
 
     const durationMs = Math.max(0, Math.round(performance.now() - this.startedAt));
+    this.flushPendingChunk(this.audioContext.sampleRate);
     await this.teardown();
     return { durationMs };
   }
@@ -108,18 +119,59 @@ export class BrowserSpeechRecorder {
 
   private async teardown(): Promise<void> {
     this.processorNode?.disconnect();
+    if (this.processorNode && this.processorMessageListener) {
+      this.processorNode.port.removeEventListener("message", this.processorMessageListener);
+    }
     this.sourceNode?.disconnect();
-    this.muteNode?.disconnect();
     this.stream?.getTracks().forEach((track) => track.stop());
     if (this.audioContext && this.audioContext.state !== "closed") {
-      await this.audioContext.close().catch(() => undefined);
+      await Promise.race([
+        this.audioContext.close().catch(() => undefined),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, AUDIO_CONTEXT_CLOSE_TIMEOUT_MS);
+        }),
+      ]);
     }
 
     this.stream = null;
     this.audioContext = null;
     this.sourceNode = null;
     this.processorNode = null;
-    this.muteNode = null;
+    this.processorMessageListener = null;
+    this.onChunk = null;
+    this.pendingSourceChunks = [];
+    this.pendingSourceSamples = 0;
     this.startedAt = 0;
+  }
+
+  private flushPendingChunk(sourceSampleRate: number): void {
+    const onChunk = this.onChunk;
+    if (!onChunk || this.pendingSourceChunks.length === 0) {
+      return;
+    }
+
+    const totalSamples = this.pendingSourceSamples;
+    const merged = new Float32Array(totalSamples);
+    let offset = 0;
+    for (const chunk of this.pendingSourceChunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    this.pendingSourceChunks = [];
+    this.pendingSourceSamples = 0;
+
+    const resampled = resampleMonoPcmLinear(merged, sourceSampleRate, TARGET_SAMPLE_RATE);
+    if (resampled.length === 0) {
+      return;
+    }
+
+    const pcm16 = encodeMonoPcm16(resampled);
+    const durationMs = Math.max(1, Math.round((resampled.length / TARGET_SAMPLE_RATE) * 1000));
+    onChunk({
+      sequence: this.nextSequence++,
+      pcmBase64: arrayBufferToBase64(pcm16.buffer.slice(0)),
+      durationMs,
+    });
   }
 }

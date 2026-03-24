@@ -55,6 +55,9 @@ export type SpeechToTextActiveDownload = typeof SpeechToTextActiveDownload.Type;
 export const SpeechToTextQualityProfile = Schema.Literals(["fast", "balanced", "quality"]);
 export type SpeechToTextQualityProfile = typeof SpeechToTextQualityProfile.Type;
 
+export const SpeechToTextRefinementMode = Schema.Literals(["draft-only", "refine-on-stop"]);
+export type SpeechToTextRefinementMode = typeof SpeechToTextRefinementMode.Type;
+
 export const SpeechToTextLanguage = Schema.Union([Schema.Literal("auto"), TrimmedNonEmptyString]);
 export type SpeechToTextLanguage = typeof SpeechToTextLanguage.Type;
 
@@ -67,6 +70,7 @@ export const SpeechToTextSettings = Schema.Struct({
   partialTranscriptsEnabled: Schema.Boolean,
   warmupEnabled: Schema.Boolean,
   qualityProfile: SpeechToTextQualityProfile,
+  refinementMode: SpeechToTextRefinementMode,
 });
 export type SpeechToTextSettings = typeof SpeechToTextSettings.Type;
 
@@ -114,13 +118,18 @@ export const SpeechToTextStartSessionResult = Schema.Struct({
 });
 export type SpeechToTextStartSessionResult = typeof SpeechToTextStartSessionResult.Type;
 
-export const SpeechToTextAppendAudioInput = Schema.Struct({
-  sessionId: SpeechToTextSessionId,
+export const SpeechToTextAudioChunk = Schema.Struct({
   sequence: NonNegativeInt,
   pcmBase64: TrimmedNonEmptyString,
   durationMs: PositiveInt,
 });
-export type SpeechToTextAppendAudioInput = typeof SpeechToTextAppendAudioInput.Type;
+export type SpeechToTextAudioChunk = typeof SpeechToTextAudioChunk.Type;
+
+export const SpeechToTextAppendAudioBatchInput = Schema.Struct({
+  sessionId: SpeechToTextSessionId,
+  chunks: Schema.NonEmptyArray(SpeechToTextAudioChunk),
+});
+export type SpeechToTextAppendAudioBatchInput = typeof SpeechToTextAppendAudioBatchInput.Type;
 
 export const SpeechToTextStopSessionInput = Schema.Struct({
   sessionId: SpeechToTextSessionId,
@@ -157,9 +166,23 @@ export type SpeechToTextSessionSegmentCommittedEvent =
 
 export const SpeechToTextSessionFinalEvent = Schema.Struct({
   type: Schema.Literal("final"),
+  stage: Schema.Literals(["draft", "single", "refined"]),
   sessionId: SpeechToTextSessionId,
   text: TrimmedNonEmptyString,
   elapsedMs: NonNegativeInt,
+  metrics: Schema.Struct({
+    recordedAudioMs: NonNegativeInt,
+    transportDrainMs: NonNegativeInt,
+    decodeMs: NonNegativeInt,
+    draftDecodeMs: NonNegativeInt,
+    refinementDecodeMs: NonNegativeInt,
+    totalChunks: NonNegativeInt,
+    totalBatches: NonNegativeInt,
+    endpointedSegmentCount: NonNegativeInt,
+    draftPassCount: NonNegativeInt,
+    refinementPassCount: NonNegativeInt,
+    engine: TrimmedNonEmptyString,
+  }),
 });
 export type SpeechToTextSessionFinalEvent = typeof SpeechToTextSessionFinalEvent.Type;
 

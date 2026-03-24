@@ -771,6 +771,27 @@ function SettingsRouteView() {
                           </SelectPopup>
                         </Select>
                       </div>
+
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-foreground">Refinement</p>
+                        <Select
+                          value={speechToTextSettings.refinementMode}
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            void updateSpeechToTextPreferences({
+                              refinementMode: value as typeof speechToTextSettings.refinementMode,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-full" disabled={speechToTextBusyKey !== null}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="draft-only">Fastest</SelectItem>
+                            <SelectItem value="refine-on-stop">Refine on stop</SelectItem>
+                          </SelectPopup>
+                        </Select>
+                      </div>
                     </div>
 
                     <div className="space-y-3">
@@ -778,7 +799,7 @@ function SettingsRouteView() {
                         <div>
                           <p className="text-sm font-medium text-foreground">Endpointing</p>
                           <p className="text-xs text-muted-foreground">
-                            Automatically commit utterances after trailing silence.
+                            Split long dictation into draft-sized segments while you speak.
                           </p>
                         </div>
                         <Switch

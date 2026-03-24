@@ -364,6 +364,7 @@ describe("wsNativeApi", () => {
           partialTranscriptsEnabled: true,
           warmupEnabled: true,
           qualityProfile: "balanced",
+          refinementMode: "refine-on-stop",
         },
         errorMessage: null,
       })
@@ -397,6 +398,7 @@ describe("wsNativeApi", () => {
         partialTranscriptsEnabled: true,
         warmupEnabled: true,
         qualityProfile: "balanced",
+        refinementMode: "refine-on-stop",
       },
       errorMessage: null,
     });
