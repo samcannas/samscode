@@ -17,6 +17,7 @@ interface WhisperSidecarSessionConfig {
   readonly binaryPath: string;
   readonly modelPath: string;
   readonly threads: number;
+  readonly acceleration: "cpu" | "cuda" | "metal";
   readonly useVad: boolean;
   readonly vadModelPath: string | undefined;
   readonly tmpDir: string;
@@ -91,6 +92,12 @@ function buildSidecarArgs(config: WhisperSidecarSessionConfig, port: number): st
     "--tmp-dir",
     config.tmpDir,
   ];
+
+  if (config.acceleration === "cpu") {
+    args.push("-ng", "-nfa");
+  } else {
+    args.push("-fa");
+  }
 
   if (config.useVad && config.vadModelPath) {
     args.push("--vad", "-vm", config.vadModelPath);
@@ -187,6 +194,7 @@ function getFingerprint(config: WhisperSidecarSessionConfig): string {
     binaryPath: config.binaryPath,
     modelPath: config.modelPath,
     threads: config.threads,
+    acceleration: config.acceleration,
     useVad: config.useVad,
     vadModelPath: config.vadModelPath ?? null,
   });

@@ -38,6 +38,16 @@ import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { updateSpeechToTextState, useSpeechToTextState } from "~/speechToText/speechToTextState";
 
+function formatSpeechModelFamily(family: string) {
+  return family === "whisper-ggml"
+    ? "whisper.cpp"
+    : family === "whisper-ct2"
+      ? "faster-whisper"
+      : family === "parakeet-tdt"
+        ? "Parakeet"
+        : family;
+}
+
 const THEME_OPTIONS = [
   {
     value: "system",
@@ -106,7 +116,7 @@ function SettingsRouteView() {
           : "Missing runtime";
   const runtimeEngineLabel =
     speechToTextState?.runtimeBackend && speechToTextState?.runtimeAcceleration
-      ? `${speechToTextState.runtimeBackend} (${speechToTextState.runtimeAcceleration})`
+      ? `${speechToTextState.runtimeBackend} (${speechToTextState.runtimeAcceleration}${speechToTextState.runtimeDevice ? ` • ${speechToTextState.runtimeDevice}` : ""})`
       : null;
   const speechToTextRepairModelId = speechToTextState?.selectedModelId
     ? speechToTextState.selectedModelId
@@ -667,8 +677,8 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Speech-to-Text</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Manage the local Whisper runtime and on-device transcription models used by the
-                  composer microphone button.
+                  Manage local speech-to-text runtimes and on-device transcription models used by
+                  the composer microphone button.
                 </p>
               </div>
 
@@ -682,10 +692,10 @@ function SettingsRouteView() {
                         : speechToTextState?.available === false
                           ? "Speech-to-text is disabled for non-local servers unless explicitly enabled."
                           : activeSpeechDownload?.type === "runtime"
-                            ? (activeSpeechDownload.message ?? "Downloading Whisper runtime.")
+                            ? (activeSpeechDownload.message ?? "Preparing speech-to-text runtime.")
                             : runtimeEngineLabel
                               ? `The server is using ${runtimeEngineLabel}.`
-                              : "The server manages the local whisper.cpp runtime automatically."}
+                              : "The server manages the local speech-to-text runtime automatically."}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -888,7 +898,8 @@ function SettingsRouteView() {
                             Voice activity detector
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Use whisper.cpp VAD during transcription for cleaner utterances.
+                            Use VAD during transcription for cleaner utterances on supported
+                            backends.
                           </p>
                         </div>
                         <Switch
@@ -950,6 +961,9 @@ function SettingsRouteView() {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-sm font-medium text-foreground">{model.name}</p>
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                {formatSpeechModelFamily(model.family)}
+                              </span>
                               <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600">
                                 Installed
                               </span>
@@ -987,7 +1001,7 @@ function SettingsRouteView() {
                   <div>
                     <p className="text-sm font-medium text-foreground">Supported models</p>
                     <p className="text-xs text-muted-foreground">
-                      Download curated Whisper models into Sam's Code storage.
+                      Download curated speech-to-text model families into Sam's Code storage.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -998,11 +1012,14 @@ function SettingsRouteView() {
                       const isDownloadingModel =
                         activeSpeechDownload?.type === "model" &&
                         activeSpeechDownload.modelId === model.id;
+                      const isUnsupported = !model.supportedOnCurrentSystem;
                       const statusText = isDownloadingModel
                         ? `${formatByteSize(activeSpeechDownload.downloadedBytes)} / ${formatByteSize(activeSpeechDownload.totalBytes ?? model.sizeBytes)}`
                         : isInstalled
                           ? "Installed"
-                          : `${formatByteSize(model.sizeBytes)} • ${model.language}`;
+                          : isUnsupported
+                            ? (model.supportHint ?? "Unsupported on this system")
+                            : `${formatByteSize(model.sizeBytes)} • ${model.language}`;
                       return (
                         <div
                           key={model.id}
@@ -1011,6 +1028,9 @@ function SettingsRouteView() {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-sm font-medium text-foreground">{model.name}</p>
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                {formatSpeechModelFamily(model.family)}
+                              </span>
                               {model.recommended ? (
                                 <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
                                   Recommended
@@ -1031,7 +1051,10 @@ function SettingsRouteView() {
                             size="xs"
                             variant={isInstalled ? "outline" : "default"}
                             disabled={
-                              isInstalled || speechToTextBusyKey !== null || isDownloadingModel
+                              isInstalled ||
+                              isUnsupported ||
+                              speechToTextBusyKey !== null ||
+                              isDownloadingModel
                             }
                             onClick={() => void downloadSpeechModel(model.id)}
                           >
@@ -1039,7 +1062,9 @@ function SettingsRouteView() {
                               ? "Downloading..."
                               : isInstalled
                                 ? "Installed"
-                                : "Download"}
+                                : isUnsupported
+                                  ? "Unsupported"
+                                  : "Download"}
                           </Button>
                         </div>
                       );

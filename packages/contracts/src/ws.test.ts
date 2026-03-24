@@ -136,12 +136,14 @@ it.effect("accepts speech-to-text push envelopes", () =>
         runtimeStatus: "ready",
         runtimeBackend: "whisper.cpp-cpu",
         runtimeAcceleration: "cpu",
+        runtimeDevice: "Windows x64 (CPU BLAS)",
         selectedModelId: "ggml-base.en.bin",
         installedModels: [
           {
             id: "ggml-base.en.bin",
             fileName: "ggml-base.en.bin",
             name: "Base English",
+            family: "whisper-ggml",
             sizeBytes: 155189248,
             installedAt: "2026-03-22T00:00:00.000Z",
             selected: true,
@@ -158,6 +160,7 @@ it.effect("accepts speech-to-text push envelopes", () =>
           partialTranscriptsEnabled: true,
           warmupEnabled: true,
           qualityProfile: "balanced",
+          cleanupModel: null,
           refinementMode: "refine-on-stop",
         },
         errorMessage: null,

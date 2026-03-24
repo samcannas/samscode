@@ -19,8 +19,8 @@ function resolveAccelerationPreference(): "auto" | "cpu" | "cuda" | "metal" {
   return "auto";
 }
 
-async function detectCudaAvailability(): Promise<boolean> {
-  if (process.platform !== "win32" || process.arch !== "x64") {
+export async function detectSpeechToTextCudaAvailability(): Promise<boolean> {
+  if (!((process.platform === "win32" || process.platform === "linux") && process.arch === "x64")) {
     return false;
   }
 
@@ -35,16 +35,36 @@ async function detectCudaAvailability(): Promise<boolean> {
   }
 }
 
+async function detectCommandAvailability(
+  command: string,
+  args: ReadonlyArray<string>,
+): Promise<boolean> {
+  try {
+    const result = await runProcess(command, args, {
+      timeoutMs: 5_000,
+      allowNonZeroExit: true,
+    });
+    return result.code === 0;
+  } catch {
+    return false;
+  }
+}
+
 export function resolveSpeechToTextPaths(stateDir: string): SpeechToTextPaths {
   const rootDir = path.join(stateDir, "speech-to-text");
   const runtimePlatformDir = path.join(rootDir, "runtime", `${process.platform}-${process.arch}`);
   const resourcesDir = path.join(rootDir, "resources");
+  const backendsDir = path.join(rootDir, "backends");
   return {
     rootDir,
     configPath: path.join(rootDir, "config.json"),
     modelsDir: path.join(rootDir, "models"),
     resourcesDir,
     vadModelPath: path.join(resourcesDir, "ggml-silero-v5.1.2.bin"),
+    backendsDir,
+    pythonRuntimeDir: path.join(backendsDir, "python"),
+    pythonVenvDir: path.join(backendsDir, "python", "venv"),
+    pythonModelsDir: path.join(backendsDir, "python", "models"),
     runtimeRootDir: path.join(rootDir, "runtime"),
     runtimePlatformDir,
     runtimeManifestPath: path.join(runtimePlatformDir, RUNTIME_MANIFEST_FILE_NAME),
@@ -58,7 +78,8 @@ export async function resolveRuntimePlatformTarget(): Promise<RuntimePlatformTar
 
   if (process.platform === "win32" && process.arch === "x64") {
     const useCuda =
-      preference === "cuda" || (preference === "auto" && (await detectCudaAvailability()));
+      preference === "cuda" ||
+      (preference === "auto" && (await detectSpeechToTextCudaAvailability()));
     return {
       platformKey: `${process.platform}-${process.arch}`,
       assetName: useCuda ? "whisper-cublas-12.4.0-bin-x64.zip" : "whisper-blas-bin-x64.zip",
@@ -67,6 +88,7 @@ export async function resolveRuntimePlatformTarget(): Promise<RuntimePlatformTar
       displayName: useCuda ? "Windows x64 (CUDA)" : "Windows x64 (CPU BLAS)",
       engineId: useCuda ? "whisper.cpp-cuda" : "whisper.cpp-cpu",
       acceleration: useCuda ? "cuda" : "cpu",
+      installKind: "archive",
     };
   }
 
@@ -79,6 +101,7 @@ export async function resolveRuntimePlatformTarget(): Promise<RuntimePlatformTar
       displayName: "Windows x86 (CPU BLAS)",
       engineId: "whisper.cpp-cpu",
       acceleration: "cpu",
+      installKind: "archive",
     };
   }
 
@@ -91,18 +114,23 @@ export async function resolveRuntimePlatformTarget(): Promise<RuntimePlatformTar
       displayName: "Linux x64 (CPU BLAS)",
       engineId: "whisper.cpp-cpu",
       acceleration: "cpu",
+      installKind: "archive",
     };
   }
 
   if (process.platform === "darwin" && process.arch === "arm64") {
+    const canBuild =
+      (await detectCommandAvailability("cmake", ["--version"])) &&
+      (await detectCommandAvailability("xcodebuild", ["-version"]));
     return {
       platformKey: `${process.platform}-${process.arch}`,
-      assetName: "",
+      assetName: "whisper.cpp-source-build.zip",
       binaryName: "whisper-cli",
-      supported: false,
+      supported: canBuild,
       displayName: "macOS Apple Silicon (Metal)",
       engineId: "whisper.cpp-metal",
       acceleration: "metal",
+      installKind: "source-build",
     };
   }
 
@@ -114,6 +142,7 @@ export async function resolveRuntimePlatformTarget(): Promise<RuntimePlatformTar
     displayName: `${process.platform} ${process.arch}`,
     engineId: "whisper.cpp-cpu",
     acceleration: "cpu",
+    installKind: "archive",
   };
 }
 
@@ -142,6 +171,15 @@ export async function resolveInstalledRuntimeBinaryPath(
         if (entry.isFile() && entry.name === binaryName) {
           return entryPath;
         }
+      }
+    }
+
+    const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+    for (const entry of pathEntries) {
+      const candidate = path.join(entry, binaryName);
+      const candidateStat = await fs.stat(candidate).catch(() => null);
+      if (candidateStat?.isFile()) {
+        return candidate;
       }
     }
     return null;
@@ -209,6 +247,17 @@ export async function resolveRuntimeReleaseAsset(): Promise<{
   }
 
   const release = (await response.json()) as RuntimeReleaseResponse;
+  if (target.installKind === "source-build") {
+    return {
+      asset: {
+        name: target.assetName,
+        browser_download_url: release.zipball_url,
+        size: 0,
+      },
+      tagName: release.tag_name,
+    };
+  }
+
   const asset = release.assets.find((entry) => entry.name === target.assetName);
   if (!asset) {
     throw new Error(`No whisper.cpp runtime asset found for ${target.displayName}.`);
@@ -258,4 +307,67 @@ export async function ensureRuntimeBinaryPermissions(binaryPath: string): Promis
     return;
   }
   await fs.chmod(binaryPath, 0o755);
+}
+
+export async function buildMetalRuntimeFromSource(input: {
+  sourceDir: string;
+  outputDir: string;
+}): Promise<void> {
+  const directCmakePath = path.join(input.sourceDir, "CMakeLists.txt");
+  const directExists = (await fs.stat(directCmakePath).catch(() => null))?.isFile() ?? false;
+  let sourceDir = input.sourceDir;
+  if (!directExists) {
+    const entries = await fs.readdir(input.sourceDir, { withFileTypes: true }).catch(() => []);
+    const nested = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const candidate = path.join(input.sourceDir, entry.name, "CMakeLists.txt");
+          return ((await fs.stat(candidate).catch(() => null))?.isFile() ?? false)
+            ? path.join(input.sourceDir, entry.name)
+            : null;
+        }),
+    );
+    const resolved = nested.find(Boolean);
+    if (resolved) {
+      sourceDir = resolved;
+    }
+  }
+
+  const buildDir = path.join(sourceDir, "build-metal");
+  await fs.rm(buildDir, { recursive: true, force: true });
+  await fs.mkdir(buildDir, { recursive: true });
+  await runProcess(
+    "cmake",
+    ["-S", sourceDir, "-B", buildDir, "-DWHISPER_BUILD_SERVER=ON", "-DCMAKE_BUILD_TYPE=Release"],
+    { timeoutMs: 10 * 60_000 },
+  );
+  await runProcess(
+    "cmake",
+    ["--build", buildDir, "--config", "Release", "--target", "whisper-cli", "whisper-server"],
+    { timeoutMs: 30 * 60_000 },
+  );
+
+  await fs.rm(input.outputDir, { recursive: true, force: true });
+  await fs.mkdir(input.outputDir, { recursive: true });
+
+  const releaseBinDir = path.join(buildDir, "bin");
+  const releaseDir = path.join(buildDir, "Release");
+  for (const candidate of [releaseBinDir, releaseDir, buildDir]) {
+    const cliPath = path.join(candidate, "whisper-cli");
+    const serverPath = path.join(candidate, "whisper-server");
+    const cliExists = (await fs.stat(cliPath).catch(() => null))?.isFile() ?? false;
+    const serverExists = (await fs.stat(serverPath).catch(() => null))?.isFile() ?? false;
+    if (cliExists && serverExists) {
+      await fs.copyFile(cliPath, path.join(input.outputDir, "whisper-cli"));
+      await fs.copyFile(serverPath, path.join(input.outputDir, "whisper-server"));
+      await ensureRuntimeBinaryPermissions(path.join(input.outputDir, "whisper-cli"));
+      await ensureRuntimeBinaryPermissions(path.join(input.outputDir, "whisper-server"));
+      return;
+    }
+  }
+
+  throw new Error(
+    "Built whisper.cpp source but could not locate whisper-cli and whisper-server binaries.",
+  );
 }

@@ -11,6 +11,11 @@ import type {
   SpeechToTextUpdatePreferencesInput,
 } from "@samscode/contracts";
 import type { Effect, Stream } from "effect";
+import type {
+  SpeechToTextEngineKind,
+  SpeechToTextModelFamily,
+  SpeechToTextModelArtifactKind,
+} from "./catalog";
 
 export interface SpeechToTextShape {
   readonly start: Effect.Effect<void>;
@@ -40,6 +45,10 @@ export interface SpeechToTextPaths {
   readonly modelsDir: string;
   readonly resourcesDir: string;
   readonly vadModelPath: string;
+  readonly backendsDir: string;
+  readonly pythonRuntimeDir: string;
+  readonly pythonVenvDir: string;
+  readonly pythonModelsDir: string;
   readonly runtimeRootDir: string;
   readonly runtimePlatformDir: string;
   readonly runtimeManifestPath: string;
@@ -62,34 +71,18 @@ export interface SpeechToTextSessionRecord {
   readonly language: string;
   readonly prompt: string;
   readonly primaryResources: SpeechToTextResolvedResources;
-  readonly draftResources: SpeechToTextResolvedResources | null;
   nextSequence: number;
-  segmentIndex: number;
   totalAudioMs: number;
   totalBatches: number;
-  partialText: string;
-  draftSegments: string[];
   isStopping: boolean;
-  detectedSpeech: boolean;
-  speechDurationMs: number;
-  silenceDurationMs: number;
-  utteranceBuffers: Buffer[];
-  utteranceDurationMs: number;
   sessionAudioBuffers: Buffer[];
-  previewQueuedAtMs: number;
-  previewInFlight: boolean;
-  previewPending: boolean;
   completionPublished: boolean;
   stopRequestedAtMs: number | null;
   lastAppendCompletedAtMs: number | null;
-  insertedDraftText: string | null;
   finalTranscript: string | null;
-  draftDecodeMsTotal: number;
-  refinementDecodeMsTotal: number;
+  finalSttMsTotal: number;
   cleanupMsTotal: number;
-  draftPassCount: number;
-  refinementPassCount: number;
-  endpointedSegmentCount: number;
+  finalSttPassCount: number;
   cleanupBackend: string | null;
   cleanupModel: string | null;
   finalizeChain: Promise<void>;
@@ -97,9 +90,13 @@ export interface SpeechToTextSessionRecord {
 }
 
 export interface SpeechToTextResolvedResources {
-  readonly sidecarBinaryPath: string;
+  readonly family: SpeechToTextModelFamily;
+  readonly artifactKind: SpeechToTextModelArtifactKind;
+  readonly engineKind: SpeechToTextEngineKind;
+  readonly sidecarBinaryPath: string | null;
   readonly modelId: string;
   readonly modelName: string;
+  readonly modelRef: string;
   readonly modelPath: string;
   readonly settings: SpeechToTextSettings;
   readonly language: string;
@@ -121,6 +118,7 @@ export interface RuntimePlatformTarget {
   readonly displayName: string;
   readonly engineId: string;
   readonly acceleration: "cpu" | "cuda" | "metal";
+  readonly installKind: "archive" | "source-build";
 }
 
 export interface RuntimeReleaseAsset {
@@ -131,6 +129,7 @@ export interface RuntimeReleaseAsset {
 
 export interface RuntimeReleaseResponse {
   readonly tag_name: string;
+  readonly zipball_url: string;
   readonly assets: ReadonlyArray<RuntimeReleaseAsset>;
 }
 

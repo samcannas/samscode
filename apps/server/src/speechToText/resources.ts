@@ -9,6 +9,11 @@ const BUNDLED_VAD_MODEL_CANDIDATES = [
   path.resolve(MODULE_DIR, "../resources/vad/ggml-silero-v5.1.2.bin"),
   path.resolve(MODULE_DIR, "./resources/vad/ggml-silero-v5.1.2.bin"),
 ];
+const BUNDLED_PYTHON_STT_SERVER_CANDIDATES = [
+  path.resolve(MODULE_DIR, "../../resources/stt/python_stt_server.py"),
+  path.resolve(MODULE_DIR, "../resources/stt/python_stt_server.py"),
+  path.resolve(MODULE_DIR, "./resources/stt/python_stt_server.py"),
+];
 
 async function fileExists(candidatePath: string): Promise<boolean> {
   return (await fs.stat(candidatePath).catch(() => null))?.isFile() ?? false;
@@ -32,5 +37,17 @@ export async function ensureVadModelInstalled(input: {
 
   throw new Error(
     `Bundled voice activity detector not found. Checked: ${BUNDLED_VAD_MODEL_CANDIDATES.join(", ")}`,
+  );
+}
+
+export async function resolveBundledPythonSidecarScript(): Promise<string> {
+  for (const candidatePath of BUNDLED_PYTHON_STT_SERVER_CANDIDATES) {
+    if (await fileExists(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  throw new Error(
+    `Bundled Python STT sidecar script not found. Checked: ${BUNDLED_PYTHON_STT_SERVER_CANDIDATES.join(", ")}`,
   );
 }

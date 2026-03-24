@@ -14,10 +14,13 @@ export const SpeechToTextModelCatalogEntry = Schema.Struct({
   id: TrimmedNonEmptyString,
   fileName: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
+  family: TrimmedNonEmptyString,
   language: Schema.Literals(["english", "multilingual"]),
   recommended: Schema.Boolean,
   description: TrimmedNonEmptyString,
   sizeBytes: NonNegativeInt,
+  supportedOnCurrentSystem: Schema.Boolean,
+  supportHint: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type SpeechToTextModelCatalogEntry = typeof SpeechToTextModelCatalogEntry.Type;
 
@@ -25,6 +28,7 @@ export const SpeechToTextInstalledModel = Schema.Struct({
   id: TrimmedNonEmptyString,
   fileName: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
+  family: TrimmedNonEmptyString,
   sizeBytes: NonNegativeInt,
   installedAt: TrimmedNonEmptyString,
   selected: Schema.Boolean,
@@ -80,6 +84,7 @@ export const SpeechToTextState = Schema.Struct({
   runtimeStatus: SpeechToTextRuntimeStatus,
   runtimeBackend: Schema.NullOr(TrimmedNonEmptyString),
   runtimeAcceleration: Schema.NullOr(TrimmedNonEmptyString),
+  runtimeDevice: Schema.NullOr(TrimmedNonEmptyString),
   selectedModelId: Schema.NullOr(TrimmedNonEmptyString),
   installedModels: Schema.Array(SpeechToTextInstalledModel),
   catalog: Schema.Array(SpeechToTextModelCatalogEntry),

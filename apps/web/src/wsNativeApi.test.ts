@@ -353,6 +353,7 @@ describe("wsNativeApi", () => {
         runtimeStatus: "ready",
         runtimeBackend: "whisper.cpp-cpu",
         runtimeAcceleration: "cpu",
+        runtimeDevice: "Windows x64 (CPU BLAS)",
         selectedModelId: null,
         installedModels: [],
         catalog: [],
@@ -367,6 +368,7 @@ describe("wsNativeApi", () => {
           warmupEnabled: true,
           qualityProfile: "balanced",
           refinementMode: "refine-on-stop",
+          cleanupModel: null,
         },
         errorMessage: null,
       })
@@ -389,6 +391,7 @@ describe("wsNativeApi", () => {
       runtimeStatus: "ready",
       runtimeBackend: "whisper.cpp-cpu",
       runtimeAcceleration: "cpu",
+      runtimeDevice: "Windows x64 (CPU BLAS)",
       selectedModelId: null,
       installedModels: [],
       catalog: [],
@@ -403,6 +406,7 @@ describe("wsNativeApi", () => {
         warmupEnabled: true,
         qualityProfile: "balanced",
         refinementMode: "refine-on-stop",
+        cleanupModel: null,
       },
       errorMessage: null,
     });
