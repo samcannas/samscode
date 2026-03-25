@@ -58,6 +58,16 @@ import type {
   SpeechToTextStopSessionInput,
   SpeechToTextUpdatePreferencesInput,
 } from "./speechToText";
+import type {
+  UpstreamSyncFetchNextReleaseInput,
+  UpstreamSyncGenerateImplementationPromptInput,
+  UpstreamSyncImplementationPromptResult,
+  UpstreamSyncGetReleaseInput,
+  UpstreamSyncReleaseReport,
+  UpstreamSyncStatus,
+  UpstreamSyncStatusInput,
+  UpstreamSyncUpdateCandidateInput,
+} from "./upstreamSync";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -194,5 +204,18 @@ export interface NativeApi {
     ) => Promise<OrchestrationGetFullThreadDiffResult>;
     replayEvents: (fromSequenceExclusive: number) => Promise<OrchestrationEvent[]>;
     onDomainEvent: (callback: (event: OrchestrationEvent) => void) => () => void;
+  };
+  upstreamSync: {
+    getStatus: (input: UpstreamSyncStatusInput) => Promise<UpstreamSyncStatus>;
+    fetchNextRelease: (
+      input: UpstreamSyncFetchNextReleaseInput,
+    ) => Promise<UpstreamSyncReleaseReport | null>;
+    getRelease: (input: UpstreamSyncGetReleaseInput) => Promise<UpstreamSyncReleaseReport>;
+    updateCandidate: (
+      input: UpstreamSyncUpdateCandidateInput,
+    ) => Promise<UpstreamSyncReleaseReport>;
+    generateImplementationPrompt: (
+      input: UpstreamSyncGenerateImplementationPromptInput,
+    ) => Promise<UpstreamSyncImplementationPromptResult>;
   };
 }

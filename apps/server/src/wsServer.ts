@@ -61,6 +61,7 @@ import { clamp } from "effect/Number";
 import { Open, resolveAvailableEditors } from "./open";
 import { ServerConfig } from "./config";
 import { GitCore } from "./git/Services/GitCore.ts";
+import { UpstreamSync } from "./upstreamSync/Services/UpstreamSync";
 import { tryHandleProjectFaviconRequest } from "./projectFaviconRoute";
 import {
   ATTACHMENTS_ROUTE_PREFIX,
@@ -217,7 +218,8 @@ export type ServerRuntimeServices =
   | TerminalManager
   | Keybindings
   | SpeechToText
-  | Open;
+  | Open
+  | UpstreamSync;
 
 export class ServerLifecycleError extends Schema.TaggedErrorClass<ServerLifecycleError>()(
   "ServerLifecycleError",
@@ -256,6 +258,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const speechToText = yield* SpeechToText;
   const providerHealth = yield* ProviderHealth;
   const git = yield* GitCore;
+  const upstreamSync = yield* UpstreamSync;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
@@ -934,6 +937,31 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.speechToTextCancelSession: {
         const body = stripRequestTag(request.body);
         return yield* speechToText.cancelSession(body);
+      }
+
+      case WS_METHODS.upstreamSyncGetStatus: {
+        const body = stripRequestTag(request.body);
+        return yield* upstreamSync.getStatus(body);
+      }
+
+      case WS_METHODS.upstreamSyncFetchNextRelease: {
+        const body = stripRequestTag(request.body);
+        return yield* upstreamSync.fetchNextRelease(body);
+      }
+
+      case WS_METHODS.upstreamSyncGetRelease: {
+        const body = stripRequestTag(request.body);
+        return yield* upstreamSync.getRelease(body);
+      }
+
+      case WS_METHODS.upstreamSyncUpdateCandidate: {
+        const body = stripRequestTag(request.body);
+        return yield* upstreamSync.updateCandidate(body);
+      }
+
+      case WS_METHODS.upstreamSyncGenerateImplementationPrompt: {
+        const body = stripRequestTag(request.body);
+        return yield* upstreamSync.generateImplementationPrompt(body);
       }
 
       default: {

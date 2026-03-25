@@ -37,6 +37,7 @@ import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { updateSpeechToTextState, useSpeechToTextState } from "~/speechToText/speechToTextState";
+import { UpstreamSyncSection } from "~/components/UpstreamSyncSection";
 
 function formatSpeechModelFamily(family: string) {
   return family === "whisper-ggml"
@@ -100,6 +101,7 @@ function SettingsRouteView() {
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
+  const serverCwd = serverConfigQuery.data?.cwd ?? null;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
   const speechToTextInstalledModels = speechToTextState?.installedModels ?? [];
@@ -1244,6 +1246,12 @@ function SettingsRouteView() {
                 </div>
               ) : null}
             </section>
+
+            <UpstreamSyncSection
+              serverCwd={serverCwd}
+              enableAssistantStreaming={settings.enableAssistantStreaming}
+            />
+
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">About</h2>

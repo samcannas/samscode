@@ -50,6 +50,13 @@ import {
   SpeechToTextState,
   SpeechToTextUpdatePreferencesInput,
 } from "./speechToText";
+import {
+  UpstreamSyncFetchNextReleaseInput,
+  UpstreamSyncGenerateImplementationPromptInput,
+  UpstreamSyncGetReleaseInput,
+  UpstreamSyncStatusInput,
+  UpstreamSyncUpdateCandidateInput,
+} from "./upstreamSync";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -97,6 +104,11 @@ export const WS_METHODS = {
   speechToTextAppendAudioBatch: "speechToText.appendAudioBatch",
   speechToTextStopSession: "speechToText.stopSession",
   speechToTextCancelSession: "speechToText.cancelSession",
+  upstreamSyncGetStatus: "upstreamSync.getStatus",
+  upstreamSyncFetchNextRelease: "upstreamSync.fetchNextRelease",
+  upstreamSyncGetRelease: "upstreamSync.getRelease",
+  upstreamSyncUpdateCandidate: "upstreamSync.updateCandidate",
+  upstreamSyncGenerateImplementationPrompt: "upstreamSync.generateImplementationPrompt",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -172,6 +184,14 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.speechToTextAppendAudioBatch, SpeechToTextAppendAudioBatchInput),
   tagRequestBody(WS_METHODS.speechToTextStopSession, SpeechToTextStopSessionInput),
   tagRequestBody(WS_METHODS.speechToTextCancelSession, SpeechToTextCancelSessionInput),
+  tagRequestBody(WS_METHODS.upstreamSyncGetStatus, UpstreamSyncStatusInput),
+  tagRequestBody(WS_METHODS.upstreamSyncFetchNextRelease, UpstreamSyncFetchNextReleaseInput),
+  tagRequestBody(WS_METHODS.upstreamSyncGetRelease, UpstreamSyncGetReleaseInput),
+  tagRequestBody(WS_METHODS.upstreamSyncUpdateCandidate, UpstreamSyncUpdateCandidateInput),
+  tagRequestBody(
+    WS_METHODS.upstreamSyncGenerateImplementationPrompt,
+    UpstreamSyncGenerateImplementationPromptInput,
+  ),
 ]);
 
 export const WebSocketRequest = Schema.Struct({

@@ -248,6 +248,15 @@ export function createWsNativeApi(): NativeApi {
           callback(message.data),
         ),
     },
+    upstreamSync: {
+      getStatus: (input) => transport.request(WS_METHODS.upstreamSyncGetStatus, input),
+      fetchNextRelease: (input) =>
+        transport.request(WS_METHODS.upstreamSyncFetchNextRelease, input),
+      getRelease: (input) => transport.request(WS_METHODS.upstreamSyncGetRelease, input),
+      updateCandidate: (input) => transport.request(WS_METHODS.upstreamSyncUpdateCandidate, input),
+      generateImplementationPrompt: (input) =>
+        transport.request(WS_METHODS.upstreamSyncGenerateImplementationPrompt, input),
+    },
   };
 
   instance = { api, transport };

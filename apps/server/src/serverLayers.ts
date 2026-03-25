@@ -35,6 +35,7 @@ import { GitServiceLive } from "./git/Layers/GitService";
 import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
 import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
 import { SpeechToTextLive } from "./speechToText/layer";
+import { UpstreamSyncLive } from "./upstreamSync/Layers/UpstreamSync";
 
 export function makeServerProviderLayer(): Layer.Layer<
   ProviderService,
@@ -128,6 +129,7 @@ export function makeServerRuntimeServicesLayer() {
     gitManagerLayer,
     terminalLayer,
     KeybindingsLive,
+    UpstreamSyncLive,
     SpeechToTextLive.pipe(Layer.provide(textGenerationLayer)),
   ).pipe(Layer.provideMerge(NodeServices.layer));
 }
