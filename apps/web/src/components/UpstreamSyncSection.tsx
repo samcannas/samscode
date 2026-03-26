@@ -1,4 +1,5 @@
 import {
+  type CodexReasoningEffort,
   type UpstreamSyncDecision,
   type UpstreamSyncReleaseCandidate,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -6,7 +7,11 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { inferProviderForModel } from "@samscode/shared/model";
+import {
+  getDefaultReasoningEffort,
+  getReasoningEffortOptions,
+  inferProviderForModel,
+} from "@samscode/shared/model";
 
 import { ensureNativeApi } from "~/nativeApi";
 import { toastManager } from "~/components/ui/toast";
@@ -28,15 +33,22 @@ import {
   upstreamSyncStatusQueryOptions,
 } from "~/lib/upstreamSyncReactQuery";
 import { useStore } from "~/store";
+import { getAppModelOptions, useAppSettings } from "~/appSettings";
 
 const DECISION_OPTIONS: Array<{ value: Exclude<UpstreamSyncDecision, "pending">; label: string }> =
   [
-    { value: "adapt", label: "Adapt" },
-    { value: "adopt", label: "Adopt" },
+    { value: "apply", label: "Apply" },
     { value: "ignore", label: "Ignore" },
     { value: "defer", label: "Defer" },
     { value: "already-present", label: "Already present" },
   ];
+
+const CODEX_REASONING_LABELS: Record<CodexReasoningEffort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+};
 
 function candidateDecisionLabel(candidate: UpstreamSyncReleaseCandidate): string {
   if (candidate.decision === "pending") {
@@ -56,6 +68,13 @@ function buildImplementationThreadTitle(input: string): string {
   return truncateTitle(input, 50);
 }
 
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) {
+    return `${durationMs} ms`;
+  }
+  return `${(durationMs / 1_000).toFixed(1)} s`;
+}
+
 export function UpstreamSyncSection(props: {
   serverCwd: string | null;
   enableAssistantStreaming: boolean;
@@ -63,6 +82,7 @@ export function UpstreamSyncSection(props: {
   const { serverCwd, enableAssistantStreaming } = props;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings, updateSettings } = useAppSettings();
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
@@ -87,6 +107,35 @@ export function UpstreamSyncSection(props: {
     }
     return projects.find((project) => project.cwd === serverCwd) ?? null;
   }, [projects, serverCwd]);
+
+  const analysisModelOptions = useMemo(
+    () =>
+      getAppModelOptions(
+        "codex",
+        settings.customCodexModels,
+        settings.upstreamSyncAnalysisModel ?? DEFAULT_MODEL_BY_PROVIDER.codex,
+      ),
+    [settings.customCodexModels, settings.upstreamSyncAnalysisModel],
+  );
+  const selectedAnalysisModel =
+    settings.upstreamSyncAnalysisModel ?? DEFAULT_MODEL_BY_PROVIDER.codex;
+  const selectedAnalysisModelLabel =
+    analysisModelOptions.find((option) => option.slug === selectedAnalysisModel)?.name ??
+    selectedAnalysisModel;
+  const analysisReasoningOptions = getReasoningEffortOptions("codex");
+  const defaultAnalysisReasoningEffort = getDefaultReasoningEffort("codex");
+  const selectedAnalysisReasoningEffort = settings.upstreamSyncAnalysisReasoningEffort;
+  const analysisProviderOptions = useMemo(() => {
+    if (!settings.codexBinaryPath && !settings.codexHomePath) {
+      return undefined;
+    }
+    return {
+      codex: {
+        ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
+        ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+      },
+    };
+  }, [settings.codexBinaryPath, settings.codexHomePath]);
 
   useEffect(() => {
     const nextTag = statusQuery.data?.activeReleaseTag ?? null;
@@ -113,9 +162,7 @@ export function UpstreamSyncSection(props: {
   }, [releaseQuery.data]);
 
   const selectedCandidateCount =
-    releaseQuery.data?.candidates.filter(
-      (candidate) => candidate.decision === "adopt" || candidate.decision === "adapt",
-    ).length ?? 0;
+    releaseQuery.data?.candidates.filter((candidate) => candidate.decision === "apply").length ?? 0;
 
   const refreshStatus = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: upstreamSyncQueryKeys.all });
@@ -128,7 +175,15 @@ export function UpstreamSyncSection(props: {
     setIsFetchingNextRelease(true);
     try {
       const api = ensureNativeApi();
-      const release = await api.upstreamSync.fetchNextRelease({ cwd: serverCwd });
+      const release = await api.upstreamSync.fetchNextRelease({
+        cwd: serverCwd,
+        forceRefresh: true,
+        analysisModel: selectedAnalysisModel,
+        analysisModelOptions: {
+          reasoningEffort: selectedAnalysisReasoningEffort,
+        },
+        ...(analysisProviderOptions ? { analysisProviderOptions } : {}),
+      });
       if (!release) {
         toastManager.add({
           type: "info",
@@ -150,7 +205,15 @@ export function UpstreamSyncSection(props: {
     } finally {
       setIsFetchingNextRelease(false);
     }
-  }, [isFetchingNextRelease, queryClient, refreshStatus, serverCwd]);
+  }, [
+    isFetchingNextRelease,
+    queryClient,
+    refreshStatus,
+    selectedAnalysisModel,
+    analysisProviderOptions,
+    selectedAnalysisReasoningEffort,
+    serverCwd,
+  ]);
 
   const saveCandidateDecision = useCallback(
     async (
@@ -299,8 +362,8 @@ export function UpstreamSyncSection(props: {
         <div>
           <h2 className="text-sm font-medium text-foreground">T3 Upstream Sync</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Review upstream T3 releases, choose what to adopt, and launch an implementation thread
-            for the selected changes.
+            Review upstream T3 releases, let a strong model inspect the release against this fork,
+            then launch an implementation thread for the changes you want to apply.
           </p>
         </div>
         <Button
@@ -349,6 +412,77 @@ export function UpstreamSyncSection(props: {
             <p className="mt-1 break-all text-[11px] text-muted-foreground">
               {statusQuery.data?.areasPath ?? "Preparing area policies..."}
             </p>
+          </div>
+          <div className="sm:col-span-2 flex flex-col gap-2 rounded-md border border-border/70 bg-background/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-medium text-foreground">Analysis model</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Review Next Release uses this model to inspect the next T3 release and recommend
+                whether each candidate should be applied, ignored, deferred, or is already present.
+              </p>
+            </div>
+            <Select
+              value={selectedAnalysisModel}
+              onValueChange={(value) => {
+                if (!value) {
+                  return;
+                }
+                updateSettings({
+                  upstreamSyncAnalysisModel: value,
+                });
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-52" aria-label="Upstream sync analysis model">
+                <SelectValue>{selectedAnalysisModelLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end">
+                {analysisModelOptions.map((option) => (
+                  <SelectItem key={`analysis-model:${option.slug}`} value={option.slug}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
+          <div className="sm:col-span-2 flex flex-col gap-2 rounded-md border border-border/70 bg-background/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-medium text-foreground">Analysis reasoning</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Controls how much reasoning the upstream review model uses when deciding whether a
+                T3 change should land in Sam's Code.
+              </p>
+            </div>
+            <Select
+              value={selectedAnalysisReasoningEffort}
+              onValueChange={(value) => {
+                if (!analysisReasoningOptions.some((option) => option === value)) {
+                  return;
+                }
+                updateSettings({
+                  upstreamSyncAnalysisReasoningEffort: value as CodexReasoningEffort,
+                });
+              }}
+            >
+              <SelectTrigger
+                className="w-full sm:w-52"
+                aria-label="Upstream sync analysis reasoning effort"
+              >
+                <SelectValue>
+                  {CODEX_REASONING_LABELS[selectedAnalysisReasoningEffort]}
+                  {selectedAnalysisReasoningEffort === defaultAnalysisReasoningEffort
+                    ? " (default)"
+                    : ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end">
+                {analysisReasoningOptions.map((option) => (
+                  <SelectItem key={`analysis-reasoning:${option}`} value={option}>
+                    {CODEX_REASONING_LABELS[option]}
+                    {option === defaultAnalysisReasoningEffort ? " (default)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           </div>
         </div>
 
@@ -430,6 +564,64 @@ export function UpstreamSyncSection(props: {
               </details>
             ) : null}
 
+            <div className="rounded-lg border border-border bg-background px-3 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-medium text-foreground">Analysis run</p>
+                <Badge variant="outline">
+                  {releaseQuery.data.analysis.source === "model"
+                    ? "Model-assisted"
+                    : releaseQuery.data.analysis.source === "partial-model"
+                      ? "Partial model"
+                      : "Heuristic fallback"}
+                </Badge>
+              </div>
+              <div className="mt-2 grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                <p>
+                  Model:{" "}
+                  <span className="text-foreground">
+                    {releaseQuery.data.analysis.model ?? "Not recorded"}
+                  </span>
+                </p>
+                <p>
+                  Reasoning:{" "}
+                  <span className="text-foreground">
+                    {releaseQuery.data.analysis.modelOptions?.reasoningEffort ?? "default"}
+                  </span>
+                </p>
+                <p>
+                  Duration:{" "}
+                  <span className="text-foreground">
+                    {formatDuration(releaseQuery.data.analysis.durationMs)}
+                  </span>
+                </p>
+                <p>
+                  Completed:{" "}
+                  <span className="text-foreground">
+                    {new Date(releaseQuery.data.analysis.completedAt).toLocaleTimeString()}
+                  </span>
+                </p>
+                <p>
+                  Model-covered:{" "}
+                  <span className="text-foreground">
+                    {releaseQuery.data.analysis.modeledCandidateCount}
+                  </span>
+                </p>
+                <p>
+                  Heuristic-covered:{" "}
+                  <span className="text-foreground">
+                    {releaseQuery.data.analysis.heuristicCandidateCount}
+                  </span>
+                </p>
+              </div>
+              <div className="mt-2 space-y-1">
+                {releaseQuery.data.analysis.notes.map((note) => (
+                  <p key={note} className="text-[11px] text-muted-foreground">
+                    {note}
+                  </p>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-3">
               {releaseQuery.data.candidates.map((candidate) => (
                 <div
@@ -453,8 +645,33 @@ export function UpstreamSyncSection(props: {
                           </span>
                         ))}
                       </div>
+                      {candidate.changeSummary.trim().length > 0 ? (
+                        <div className="mt-3 rounded-md border border-border/70 bg-background/80 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            What changed
+                          </p>
+                          <p className="mt-1 text-xs text-foreground/90">
+                            {candidate.changeSummary}
+                          </p>
+                        </div>
+                      ) : null}
+                      {candidate.forkValueSummary.trim().length > 0 ? (
+                        <div className="mt-2 rounded-md border border-border/70 bg-background/80 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Why it may fit Sam's Code
+                          </p>
+                          <p className="mt-1 text-xs text-foreground/90">
+                            {candidate.forkValueSummary}
+                          </p>
+                        </div>
+                      ) : null}
                       {candidate.summary.trim().length > 0 ? (
-                        <p className="mt-2 text-xs text-muted-foreground">{candidate.summary}</p>
+                        <details className="mt-2 rounded-md border border-border/70 bg-background/80 px-3 py-2">
+                          <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Raw upstream message
+                          </summary>
+                          <p className="mt-2 text-xs text-muted-foreground">{candidate.summary}</p>
+                        </details>
                       ) : null}
                       <p className="mt-2 text-[11px] text-muted-foreground">
                         Recommended:{" "}
@@ -495,7 +712,9 @@ export function UpstreamSyncSection(props: {
 
                   <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem]">
                     <label className="block space-y-1">
-                      <span className="text-xs font-medium text-foreground">Fork notes</span>
+                      <span className="text-xs font-medium text-foreground">
+                        Your notes (optional)
+                      </span>
                       <Textarea
                         value={noteDrafts[candidate.id] ?? ""}
                         onChange={(event) =>
@@ -505,7 +724,7 @@ export function UpstreamSyncSection(props: {
                           }))
                         }
                         onBlur={() => onNoteBlur(candidate)}
-                        placeholder="Why keep, adapt, skip, or defer this upstream change?"
+                        placeholder="Optional local note, override, or implementation detail"
                         rows={3}
                       />
                     </label>

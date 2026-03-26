@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "tag": "v0.0.14",
+  "updatedAt": "2026-03-26T01:07:15.150Z",
+  "decisions": [
+    {
+      "candidateId": "commit-56660b04e98c",
+      "decision": "ignore",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-8f11ea44a75b",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-bc12421736fd",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-d37338970326",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-46e63b36121d",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-25c70032266a",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-34cef6202b6c",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-d6408a29494c",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-ef2569196f16",
+      "decision": "ignore",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-2b6640af1e6e",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-754cded24abe",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-843d6d8678c9",
+      "decision": "ignore",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-d415558915f3",
+      "decision": "ignore",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-e11fb6e77845",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-2b08d8669646",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-be1abc88fda0",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-d4a7e1ac0b03",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-0a503d0cdeb4",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-8f3515572de0",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-28afb14004bb",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-9e29c9d72895",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-e823f8f14ecb",
+      "decision": "ignore",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-1371ce2ccef7",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-384f35084e8a",
+      "decision": "apply",
+      "note": ""
+    },
+    {
+      "candidateId": "commit-529315b4c8ec",
+      "decision": "apply",
+      "note": ""
+    }
+  ]
+}

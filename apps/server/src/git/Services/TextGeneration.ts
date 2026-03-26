@@ -8,7 +8,7 @@
  */
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
-import type { ChatAttachment } from "@samscode/contracts";
+import type { ChatAttachment, CodexModelOptions } from "@samscode/contracts";
 
 import type { TextGenerationError } from "../Errors.ts";
 
@@ -70,6 +70,40 @@ export interface TranscriptCleanupResult {
   cleanedTranscript: string;
 }
 
+export interface UpstreamSyncAnalysisCandidateInput {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  areas: ReadonlyArray<string>;
+  changedFiles: ReadonlyArray<string>;
+  heuristicDecision: "apply" | "ignore" | "defer" | "already-present";
+  heuristicReason?: string | undefined;
+  autoDetectedAlreadyPresent: boolean;
+}
+
+export interface UpstreamSyncAnalysisInput {
+  cwd: string;
+  releaseTag: string;
+  previousTag: string | null;
+  releaseNotes: string;
+  candidates: ReadonlyArray<UpstreamSyncAnalysisCandidateInput>;
+  model?: string | undefined;
+  modelOptions?: CodexModelOptions | undefined;
+}
+
+export interface UpstreamSyncAnalysisCandidateResult {
+  id: string;
+  changeSummary: string;
+  forkValueSummary: string;
+  recommendedDecision: "apply" | "ignore" | "defer" | "already-present";
+  recommendedReason: string;
+}
+
+export interface UpstreamSyncAnalysisResult {
+  candidates: ReadonlyArray<UpstreamSyncAnalysisCandidateResult>;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -77,6 +111,7 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   cleanupTranscript(input: TranscriptCleanupInput): Promise<TranscriptCleanupResult>;
+  analyzeUpstreamSync(input: UpstreamSyncAnalysisInput): Promise<UpstreamSyncAnalysisResult>;
 }
 
 /**
@@ -107,6 +142,10 @@ export interface TextGenerationShape {
   readonly cleanupTranscript: (
     input: TranscriptCleanupInput,
   ) => Effect.Effect<TranscriptCleanupResult, TextGenerationError>;
+
+  readonly analyzeUpstreamSync: (
+    input: UpstreamSyncAnalysisInput,
+  ) => Effect.Effect<UpstreamSyncAnalysisResult, TextGenerationError>;
 }
 
 /**

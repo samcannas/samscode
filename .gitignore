@@ -12,7 +12,10 @@ packages/*/dist
 build/
 .logs/
 release/
-.samscode
+.samscode/*
+!.samscode/upstream-sync/
+!.samscode/upstream-sync/**
+.samscode/upstream-sync/cache/
 .idea/
 apps/web/.playwright
 apps/web/playwright-report

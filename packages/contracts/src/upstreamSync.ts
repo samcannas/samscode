@@ -1,13 +1,14 @@
 import { Schema } from "effect";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas";
+import { CodexModelOptions } from "./model";
+import { ProviderStartOptions } from "./orchestration";
 
 export const UPSTREAM_SYNC_SCHEMA_VERSION = 1 as const;
 
 export const UpstreamSyncDecision = Schema.Literals([
   "pending",
-  "adopt",
-  "adapt",
+  "apply",
   "ignore",
   "defer",
   "already-present",
@@ -15,8 +16,7 @@ export const UpstreamSyncDecision = Schema.Literals([
 export type UpstreamSyncDecision = typeof UpstreamSyncDecision.Type;
 
 export const UpstreamSyncTerminalDecision = Schema.Literals([
-  "adopt",
-  "adapt",
+  "apply",
   "ignore",
   "defer",
   "already-present",
@@ -88,10 +88,25 @@ export const UpstreamSyncReleaseCandidateIntake = Schema.Struct({
   category: UpstreamSyncCandidateCategory,
   areas: Schema.Array(TrimmedNonEmptyString),
   changedFiles: Schema.Array(TrimmedNonEmptyString),
+  changeSummary: Schema.String,
+  forkValueSummary: Schema.String,
   recommendedDecision: UpstreamSyncTerminalDecision,
   recommendedReason: Schema.optional(TrimmedNonEmptyString),
 });
 export type UpstreamSyncReleaseCandidateIntake = typeof UpstreamSyncReleaseCandidateIntake.Type;
+
+export const UpstreamSyncAnalysisRun = Schema.Struct({
+  source: Schema.Literals(["model", "partial-model", "heuristic-fallback"]),
+  model: Schema.NullOr(TrimmedNonEmptyString),
+  modelOptions: Schema.optional(CodexModelOptions),
+  startedAt: IsoDateTime,
+  completedAt: IsoDateTime,
+  durationMs: Schema.Number,
+  modeledCandidateCount: Schema.Number,
+  heuristicCandidateCount: Schema.Number,
+  notes: Schema.Array(TrimmedNonEmptyString),
+});
+export type UpstreamSyncAnalysisRun = typeof UpstreamSyncAnalysisRun.Type;
 
 export const UpstreamSyncReleaseIntake = Schema.Struct({
   schemaVersion: Schema.Literal(UPSTREAM_SYNC_SCHEMA_VERSION),
@@ -103,6 +118,7 @@ export const UpstreamSyncReleaseIntake = Schema.Struct({
   compareUrl: Schema.NullOr(TrimmedNonEmptyString),
   fetchedAt: IsoDateTime,
   releaseNotes: Schema.String,
+  analysis: UpstreamSyncAnalysisRun,
   candidates: Schema.Array(UpstreamSyncReleaseCandidateIntake),
 });
 export type UpstreamSyncReleaseIntake = typeof UpstreamSyncReleaseIntake.Type;
@@ -132,6 +148,8 @@ export const UpstreamSyncReleaseCandidate = Schema.Struct({
   category: UpstreamSyncCandidateCategory,
   areas: Schema.Array(TrimmedNonEmptyString),
   changedFiles: Schema.Array(TrimmedNonEmptyString),
+  changeSummary: Schema.String,
+  forkValueSummary: Schema.String,
   recommendedDecision: UpstreamSyncTerminalDecision,
   recommendedReason: Schema.optional(TrimmedNonEmptyString),
   decision: UpstreamSyncDecision,
@@ -148,6 +166,7 @@ export const UpstreamSyncReleaseReport = Schema.Struct({
   compareUrl: Schema.NullOr(TrimmedNonEmptyString),
   fetchedAt: IsoDateTime,
   releaseNotes: Schema.String,
+  analysis: UpstreamSyncAnalysisRun,
   candidates: Schema.Array(UpstreamSyncReleaseCandidate),
   triagedAt: Schema.NullOr(IsoDateTime),
 });
@@ -175,6 +194,9 @@ export type UpstreamSyncStatus = typeof UpstreamSyncStatus.Type;
 export const UpstreamSyncFetchNextReleaseInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   forceRefresh: Schema.optional(Schema.Boolean),
+  analysisModel: Schema.optional(TrimmedNonEmptyString),
+  analysisModelOptions: Schema.optional(CodexModelOptions),
+  analysisProviderOptions: Schema.optional(ProviderStartOptions),
 });
 export type UpstreamSyncFetchNextReleaseInput = typeof UpstreamSyncFetchNextReleaseInput.Type;
 

@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import { Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@samscode/contracts";
+import { DEFAULT_GIT_TEXT_GENERATION_MODEL, type CodexModelOptions } from "@samscode/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@samscode/shared/git";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { runProcess } from "../../processRunner.ts";
 import { TextGenerationError } from "../Errors.ts";
 import {
   type BranchNameGenerationInput,
@@ -16,12 +17,19 @@ import {
   type PrContentGenerationResult,
   type TranscriptCleanupInput,
   type TranscriptCleanupResult,
+  type UpstreamSyncAnalysisInput,
+  type UpstreamSyncAnalysisResult,
   type TextGenerationShape,
   TextGeneration,
 } from "../Services/TextGeneration.ts";
 
 const CODEX_REASONING_EFFORT = "low";
 const CODEX_TIMEOUT_MS = 180_000;
+const CODEX_UPSTREAM_SYNC_TIMEOUT_MS = 45_000;
+
+function resolveCodexReasoningEffort(modelOptions: CodexModelOptions | undefined): string {
+  return modelOptions?.reasoningEffort ?? CODEX_REASONING_EFFORT;
+}
 
 function toCodexOutputJsonSchema(schema: Schema.Top): unknown {
   const document = Schema.toJsonSchemaDocument(schema);
@@ -76,6 +84,74 @@ function limitSection(value: string, maxChars: number): string {
   return `${truncated}\n\n[truncated]`;
 }
 
+function extractStructuredJson(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Codex returned an empty response.");
+  }
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  if (objectStart !== -1 && objectEnd > objectStart) {
+    return trimmed.slice(objectStart, objectEnd + 1);
+  }
+
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (arrayStart !== -1 && arrayEnd > arrayStart) {
+    return trimmed.slice(arrayStart, arrayEnd + 1);
+  }
+
+  return trimmed;
+}
+
+function previewStructuredOutput(raw: string): string {
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (normalized.length <= 220) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 217)}...`;
+}
+
+function extractCodexLastTextFromJsonLines(raw: string): string | null {
+  let lastText: string | null = null;
+  for (const line of raw.split(/\r?\n/g)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== "object" || parsed === null) {
+      continue;
+    }
+    const record = parsed as {
+      type?: unknown;
+      item?: {
+        type?: unknown;
+        text?: unknown;
+      };
+    };
+    if (
+      record.type === "item.completed" &&
+      record.item?.type === "agent_message" &&
+      typeof record.item.text === "string"
+    ) {
+      lastText = record.item.text;
+    }
+  }
+  return lastText;
+}
+
 function sanitizeCommitSubject(raw: string): string {
   const singleLine = raw.trim().split(/\r?\n/g)[0]?.trim() ?? "";
   const withoutTrailingPeriod = singleLine.replace(/[.]+$/g, "").trim();
@@ -126,6 +202,49 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     });
 
   const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
+  const codexEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => {
+      if (key === "ELECTRON_RUN_AS_NODE") return false;
+      if (key.startsWith("ELECTRON_")) return false;
+      if (key.startsWith("npm_")) return false;
+      if (key.startsWith("NODE_")) return false;
+      if (key.startsWith("BUN_")) return false;
+      return true;
+    }),
+  );
+  let cachedCodexExecutablePath: string | null = null;
+
+  const resolveCodexExecutablePath = async (): Promise<string> => {
+    if (cachedCodexExecutablePath) {
+      return cachedCodexExecutablePath;
+    }
+    if (process.platform !== "win32") {
+      cachedCodexExecutablePath = "codex";
+      return cachedCodexExecutablePath;
+    }
+
+    try {
+      const result = await runProcess("where", ["codex.exe"], {
+        env: codexEnv,
+        timeoutMs: 10_000,
+        allowNonZeroExit: true,
+        outputMode: "truncate",
+      });
+      const matches = result.stdout
+        .split(/\r?\n/g)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && line.toLowerCase().endsWith("codex.exe"));
+      const preferredMatch =
+        matches.find((line) => line.toLowerCase().includes("\\.vite-plus\\bin\\codex.exe")) ??
+        matches.find((line) => !line.toLowerCase().includes("\\.bun\\bin\\codex.exe")) ??
+        matches[0];
+      cachedCodexExecutablePath = preferredMatch ?? "codex";
+      return cachedCodexExecutablePath;
+    } catch {
+      cachedCodexExecutablePath = "codex";
+      return cachedCodexExecutablePath;
+    }
+  };
 
   const writeTempFile = (
     operation: string,
@@ -154,7 +273,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "cleanupTranscript",
+      | "cleanupTranscript"
+      | "analyzeUpstreamSync",
     attachments: BranchNameGenerationInput["attachments"],
   ): Effect.Effect<MaterializedImageAttachments, TextGenerationError> =>
     Effect.gen(function* () {
@@ -194,20 +314,28 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     imagePaths = [],
     cleanupPaths = [],
     model,
+    modelOptions,
   }: {
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "cleanupTranscript";
+      | "cleanupTranscript"
+      | "analyzeUpstreamSync";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
     imagePaths?: ReadonlyArray<string>;
     cleanupPaths?: ReadonlyArray<string>;
     model?: string;
+    modelOptions?: CodexModelOptions;
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
+      const codexExecutablePath = yield* Effect.promise(() => resolveCodexExecutablePath()).pipe(
+        Effect.mapError((cause) =>
+          normalizeCodexError(operation, cause, "Failed to resolve Codex CLI path"),
+        ),
+      );
       const schemaPath = yield* writeTempFile(
         operation,
         "codex-schema",
@@ -217,7 +345,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
 
       const runCodexCommand = Effect.gen(function* () {
         const command = ChildProcess.make(
-          "codex",
+          codexExecutablePath,
           [
             "exec",
             "--ephemeral",
@@ -226,7 +354,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             "--model",
             model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
             "--config",
-            `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
+            `model_reasoning_effort="${resolveCodexReasoningEffort(modelOptions)}"`,
             "--output-schema",
             schemaPath,
             "--output-last-message",
@@ -236,6 +364,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           ],
           {
             cwd,
+            env: codexEnv,
             shell: process.platform === "win32",
             stdin: {
               stream: Stream.make(new TextEncoder().encode(prompt)),
@@ -301,7 +430,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           ),
         );
 
-        return yield* fileSystem.readFileString(outputPath).pipe(
+        const rawOutput = yield* fileSystem.readFileString(outputPath).pipe(
           Effect.mapError(
             (cause) =>
               new TextGenerationError({
@@ -310,12 +439,24 @@ const makeCodexTextGeneration = Effect.gen(function* () {
                 cause,
               }),
           ),
-          Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))),
+        );
+
+        const parsedOutput = yield* Effect.try({
+          try: () => JSON.parse(extractStructuredJson(rawOutput)) as unknown,
+          catch: (cause) =>
+            new TextGenerationError({
+              operation,
+              detail: `Codex returned invalid structured output. Preview: ${previewStructuredOutput(rawOutput)}`,
+              cause,
+            }),
+        });
+
+        return yield* Schema.decodeUnknownEffect(outputSchemaJson)(parsedOutput).pipe(
           Effect.catchTag("SchemaError", (cause) =>
             Effect.fail(
               new TextGenerationError({
                 operation,
-                detail: "Codex returned invalid structured output.",
+                detail: `Codex returned invalid structured output. Preview: ${previewStructuredOutput(rawOutput)}`,
                 cause,
               }),
             ),
@@ -329,103 +470,52 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     cwd,
     prompt,
     model,
+    modelOptions,
   }: {
-    operation: "cleanupTranscript";
+    operation: "cleanupTranscript" | "analyzeUpstreamSync";
     cwd: string;
     prompt: string;
     model?: string;
+    modelOptions?: CodexModelOptions;
   }): Effect.Effect<string, TextGenerationError> =>
-    Effect.gen(function* () {
-      const outputPath = yield* writeTempFile(operation, "codex-output", "");
-
-      const runCodexCommand = Effect.gen(function* () {
-        const command = ChildProcess.make(
-          "codex",
+    Effect.tryPromise({
+      try: async () => {
+        const codexExecutablePath = await resolveCodexExecutablePath();
+        const timeoutMs =
+          operation === "analyzeUpstreamSync" ? CODEX_UPSTREAM_SYNC_TIMEOUT_MS : CODEX_TIMEOUT_MS;
+        const result = await runProcess(
+          codexExecutablePath,
           [
             "exec",
+            "--json",
             "--ephemeral",
             "-s",
             "read-only",
             "--model",
             model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
             "--config",
-            `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
-            "--output-last-message",
-            outputPath,
+            `model_reasoning_effort="${resolveCodexReasoningEffort(modelOptions)}"`,
             "-",
           ],
           {
             cwd,
-            shell: process.platform === "win32",
-            stdin: {
-              stream: Stream.make(new TextEncoder().encode(prompt)),
-            },
+            env: codexEnv,
+            stdin: prompt,
+            timeoutMs,
+            maxBufferBytes: 8 * 1024 * 1024,
+            outputMode: "truncate",
           },
         );
-
-        const child = yield* commandSpawner
-          .spawn(command)
-          .pipe(
-            Effect.mapError((cause) =>
-              normalizeCodexError(operation, cause, "Failed to spawn Codex CLI process"),
-            ),
+        const lastText = extractCodexLastTextFromJsonLines(result.stdout);
+        if (!lastText || lastText.trim().length === 0) {
+          const previewSource = `${result.stdout}\n${result.stderr}`.trim();
+          throw new Error(
+            `Codex did not emit an agent message. Preview: ${previewStructuredOutput(previewSource)}`,
           );
-
-        const [stdout, stderr, exitCode] = yield* Effect.all(
-          [
-            readStreamAsString(operation, child.stdout),
-            readStreamAsString(operation, child.stderr),
-            child.exitCode.pipe(
-              Effect.map((value) => Number(value)),
-              Effect.mapError((cause) =>
-                normalizeCodexError(operation, cause, "Failed to read Codex CLI exit code"),
-              ),
-            ),
-          ],
-          { concurrency: "unbounded" },
-        );
-
-        if (exitCode !== 0) {
-          const stderrDetail = stderr.trim();
-          const stdoutDetail = stdout.trim();
-          const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
-          return yield* new TextGenerationError({
-            operation,
-            detail:
-              detail.length > 0
-                ? `Codex CLI command failed: ${detail}`
-                : `Codex CLI command failed with code ${exitCode}.`,
-          });
         }
-      });
-
-      return yield* Effect.gen(function* () {
-        yield* runCodexCommand.pipe(
-          Effect.scoped,
-          Effect.timeoutOption(CODEX_TIMEOUT_MS),
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.fail(
-                  new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
-                ),
-              onSome: () => Effect.void,
-            }),
-          ),
-        );
-
-        return yield* fileSystem.readFileString(outputPath).pipe(
-          Effect.mapError(
-            (cause) =>
-              new TextGenerationError({
-                operation,
-                detail: "Failed to read Codex output file.",
-                cause,
-              }),
-          ),
-          Effect.map((text) => text.trim()),
-        );
-      }).pipe(Effect.ensuring(safeUnlink(outputPath)));
+        return lastText.trim();
+      },
+      catch: (cause) => normalizeCodexError(operation, cause, "Failed to run Codex CLI process"),
     });
 
   const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {
@@ -643,11 +733,104 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     );
   };
 
+  const analyzeUpstreamSync: TextGenerationShape["analyzeUpstreamSync"] = (
+    input: UpstreamSyncAnalysisInput,
+  ) => {
+    const outputSchema = Schema.Struct({
+      candidates: Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          changeSummary: Schema.String,
+          forkValueSummary: Schema.String,
+          recommendedDecision: Schema.Literals(["apply", "ignore", "defer", "already-present"]),
+          recommendedReason: Schema.String,
+        }),
+      ),
+    });
+
+    const prompt = [
+      "You review upstream release changes for a forked codebase.",
+      "Inspect the local repository when needed before deciding.",
+      "Return ONLY a JSON object with key: candidates.",
+      "For each candidate, return id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
+      "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
+      "Rules:",
+      "- `apply` means the upstream intent should land in the fork, even if implementation must differ.",
+      "- `already-present` means the fork already has the intended behavior and no additional sync work is needed.",
+      "- `ignore` means the change should not be pulled into the fork.",
+      "- `defer` means the change might matter later but should not be pulled right now.",
+      "- Prefer `already-present` only when you are confident the local code already covers the upstream intent.",
+      "- `changeSummary` should explain in 1-2 short sentences what the upstream change is really doing.",
+      "- `forkValueSummary` should explain in 1-2 short sentences why this is or is not a good fit for Sam's Code specifically.",
+      "- Use the heuristic recommendation and detected status as hints, but override them when local code inspection shows a better answer.",
+      "- Be concise and specific in recommendedReason.",
+      "- Do not wrap the JSON in markdown fences.",
+      "- Do not include commentary before or after the JSON.",
+      "",
+      `Release tag: ${input.releaseTag}`,
+      ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
+      input.releaseNotes.trim().length > 0
+        ? ["", "Release notes:", limitSection(input.releaseNotes, 8_000)].join("\n")
+        : "",
+      "",
+      "Candidates:",
+      limitSection(JSON.stringify(input.candidates, null, 2), 30_000),
+      "",
+      "This repo is Sam's Code, a T3 Code fork with intentional divergence.",
+      "Do not recommend changes that only serve upstream branding, release automation, or removed product areas unless the fork still needs them.",
+    ]
+      .filter((section) => section.length > 0)
+      .join("\n");
+
+    return runCodexText({
+      operation: "analyzeUpstreamSync",
+      cwd: input.cwd,
+      prompt,
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
+    }).pipe(
+      Effect.flatMap((rawOutput) =>
+        Effect.try({
+          try: () => JSON.parse(extractStructuredJson(rawOutput)) as unknown,
+          catch: (cause) =>
+            new TextGenerationError({
+              operation: "analyzeUpstreamSync",
+              detail: `Codex returned invalid JSON output. Preview: ${previewStructuredOutput(rawOutput)}`,
+              cause,
+            }),
+        }),
+      ),
+      Effect.flatMap(Schema.decodeUnknownEffect(outputSchema)),
+      Effect.catchTag("SchemaError", (cause) =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "analyzeUpstreamSync",
+            detail: "Codex returned invalid structured output.",
+            cause,
+          }),
+        ),
+      ),
+      Effect.map(
+        (result) =>
+          ({
+            candidates: result.candidates.map((candidate) => ({
+              id: candidate.id.trim(),
+              changeSummary: candidate.changeSummary.trim(),
+              forkValueSummary: candidate.forkValueSummary.trim(),
+              recommendedDecision: candidate.recommendedDecision,
+              recommendedReason: candidate.recommendedReason.trim(),
+            })),
+          }) satisfies UpstreamSyncAnalysisResult,
+      ),
+    );
+  };
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     cleanupTranscript,
+    analyzeUpstreamSync,
   } satisfies TextGenerationShape;
 });
 

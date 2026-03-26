@@ -1,7 +1,13 @@
 import { useCallback } from "react";
 import { Option, Schema } from "effect";
-import { TrimmedNonEmptyString, type ProviderKind } from "@samscode/contracts";
 import {
+  type CodexReasoningEffort,
+  DEFAULT_MODEL_BY_PROVIDER,
+  TrimmedNonEmptyString,
+  type ProviderKind,
+} from "@samscode/contracts";
+import {
+  getDefaultReasoningEffort,
   getDefaultModel,
   getModelOptions,
   normalizeModelSlug,
@@ -56,6 +62,12 @@ export const AppSettingsSchema = Schema.Struct({
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
+  upstreamSyncAnalysisModel: Schema.optional(TrimmedNonEmptyString).pipe(
+    withDefaults(() => DEFAULT_MODEL_BY_PROVIDER.codex),
+  ),
+  upstreamSyncAnalysisReasoningEffort: Schema.Literals(["low", "medium", "high", "xhigh"]).pipe(
+    withDefaults(() => getDefaultReasoningEffort("codex") as CodexReasoningEffort),
+  ),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {

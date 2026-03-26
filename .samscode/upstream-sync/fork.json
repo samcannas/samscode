@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repo": "pingdotgg/t3code",
+    "defaultBranch": "main",
+    "releaseChannel": "stable"
+  },
+  "forkOrigin": {
+    "baseReleaseTag": "v0.0.13",
+    "baseCommitSha": "2a237c20019af8eae1020511b41256ea93127e4c",
+    "confidence": "derived-from-repo-analysis",
+    "evidence": "Closest upstream snapshot for the local root commit matches T3 Code v0.0.13."
+  },
+  "tracking": {
+    "lastFullyTriagedReleaseTag": "v0.0.14",
+    "lastFetchedReleaseTag": "v0.0.14"
+  },
+  "defaults": {
+    "implementationMode": "logic-first"
+  }
+}

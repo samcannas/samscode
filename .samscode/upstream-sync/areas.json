@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "areas": [
+    {
+      "id": "web",
+      "label": "Web UI",
+      "pathPrefixes": ["apps/web/"],
+      "titleKeywords": ["web", "chat", "sidebar", "settings", "ui"],
+      "defaultDecision": "apply"
+    },
+    {
+      "id": "server",
+      "label": "Server runtime",
+      "pathPrefixes": ["apps/server/"],
+      "titleKeywords": ["server", "provider", "codex", "claude", "session"],
+      "defaultDecision": "apply"
+    },
+    {
+      "id": "contracts",
+      "label": "Contracts",
+      "pathPrefixes": ["packages/contracts/"],
+      "titleKeywords": ["contract", "schema", "protocol"],
+      "defaultDecision": "apply"
+    },
+    {
+      "id": "shared",
+      "label": "Shared runtime",
+      "pathPrefixes": ["packages/shared/"],
+      "titleKeywords": ["shared", "util"],
+      "defaultDecision": "apply"
+    },
+    {
+      "id": "desktop",
+      "label": "Desktop app",
+      "pathPrefixes": ["apps/desktop/"],
+      "titleKeywords": ["desktop", "electron", "mac", "windows"],
+      "defaultDecision": "apply"
+    },
+    {
+      "id": "ci",
+      "label": "Release and CI",
+      "pathPrefixes": [".github/", "docs/release", "scripts/release"],
+      "titleKeywords": ["ci", "workflow", "release"],
+      "defaultDecision": "ignore",
+      "reason": "Upstream release automation rarely maps cleanly to the fork."
+    },
+    {
+      "id": "docs",
+      "label": "Docs",
+      "pathPrefixes": ["README.md", "docs/"],
+      "titleKeywords": ["docs", "readme", "contributing"],
+      "defaultDecision": "ignore",
+      "reason": "Documentation is maintained separately in the fork."
+    },
+    {
+      "id": "assets",
+      "label": "Branding and assets",
+      "pathPrefixes": ["assets/", "apps/web/public/", "apps/desktop/resources/"],
+      "titleKeywords": ["icon", "branding", "logo", "asset"],
+      "defaultDecision": "ignore",
+      "reason": "Fork branding intentionally diverges from upstream."
+    }
+  ]
+}

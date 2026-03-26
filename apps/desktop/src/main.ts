@@ -1,6 +1,7 @@
 import * as ChildProcess from "node:child_process";
 import * as Crypto from "node:crypto";
 import * as FS from "node:fs";
+import * as Net from "node:net";
 import * as OS from "node:os";
 import * as Path from "node:path";
 
@@ -74,6 +75,8 @@ const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const DESKTOP_UPDATE_CHANNEL = "latest";
 const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
+const BACKEND_READY_TIMEOUT_MS = 15_000;
+const BACKEND_READY_RETRY_DELAY_MS = 100;
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 
@@ -84,6 +87,8 @@ let backendAuthToken = "";
 let backendWsUrl = "";
 let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
+let backendEntryWatchRegistered = false;
+let backendEntryRestartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
 let desktopProtocolRegistered = false;
 let aboutCommitHashCache: string | null | undefined;
@@ -934,6 +939,52 @@ function scheduleBackendRestart(reason: string): void {
   }, delayMs);
 }
 
+function restartBackendForEntryChange(reason: string): void {
+  if (isQuitting) return;
+  if (backendEntryRestartTimer) {
+    clearTimeout(backendEntryRestartTimer);
+  }
+  backendEntryRestartTimer = setTimeout(() => {
+    backendEntryRestartTimer = null;
+    writeDesktopLogHeader(`backend hot restart requested: ${reason}`);
+    void stopBackendAndWaitForExit()
+      .catch((error) => {
+        console.error(`[desktop] failed to stop backend before restart: ${String(error)}`);
+      })
+      .finally(() => {
+        startBackend();
+      });
+  }, 150);
+  backendEntryRestartTimer.unref();
+}
+
+function startBackendEntryWatcher(): void {
+  if (app.isPackaged || backendEntryWatchRegistered) {
+    return;
+  }
+  backendEntryWatchRegistered = true;
+  const backendEntry = resolveBackendEntry();
+  FS.watchFile(backendEntry, { interval: 300 }, (current, previous) => {
+    if (current.mtimeMs === 0 || current.mtimeMs === previous.mtimeMs) {
+      return;
+    }
+    restartBackendForEntryChange(`server dist changed at ${backendEntry}`);
+  });
+}
+
+function stopBackendEntryWatcher(): void {
+  if (!backendEntryWatchRegistered) {
+    return;
+  }
+  backendEntryWatchRegistered = false;
+  const backendEntry = resolveBackendEntry();
+  FS.unwatchFile(backendEntry);
+  if (backendEntryRestartTimer) {
+    clearTimeout(backendEntryRestartTimer);
+    backendEntryRestartTimer = null;
+  }
+}
+
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
 
@@ -989,6 +1040,53 @@ function startBackend(): void {
     if (isQuitting) return;
     const reason = `code=${code ?? "null"} signal=${signal ?? "null"}`;
     scheduleBackendRestart(reason);
+  });
+}
+
+function waitForBackendReady(port: number, timeoutMs = BACKEND_READY_TIMEOUT_MS): Promise<void> {
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tryConnect = () => {
+      if (isQuitting) {
+        reject(new Error("Backend startup cancelled during shutdown."));
+        return;
+      }
+
+      const socket = Net.createConnection({ host: "127.0.0.1", port });
+      let settled = false;
+
+      const finish = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        socket.removeAllListeners();
+        socket.destroy();
+        callback();
+      };
+
+      socket.setTimeout(1_000);
+
+      socket.once("connect", () => {
+        finish(resolve);
+      });
+
+      const retry = () => {
+        finish(() => {
+          if (Date.now() - startedAt >= timeoutMs) {
+            reject(new Error(`Timed out waiting for backend to listen on port ${port}.`));
+            return;
+          }
+          setTimeout(tryConnect, BACKEND_READY_RETRY_DELAY_MS).unref();
+        });
+      };
+
+      socket.once("timeout", retry);
+      socket.once("error", retry);
+    };
+
+    tryConnect();
   });
 }
 
@@ -1318,8 +1416,12 @@ async function bootstrap(): Promise<void> {
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
+  startBackendEntryWatcher();
+  writeDesktopLogHeader("bootstrap backend watcher started");
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
+  await waitForBackendReady(backendPort);
+  writeDesktopLogHeader(`bootstrap backend accepted connections port=${backendPort}`);
   mainWindow = createWindow();
   writeDesktopLogHeader("bootstrap main window created");
 }
@@ -1328,6 +1430,7 @@ app.on("before-quit", () => {
   isQuitting = true;
   writeDesktopLogHeader("before-quit received");
   clearUpdatePollTimer();
+  stopBackendEntryWatcher();
   stopBackend();
   restoreStdIoCapture?.();
 });

@@ -28,7 +28,8 @@ interface SubscribeOptions {
 type TransportState = "connecting" | "open" | "reconnecting" | "closed" | "disposed";
 
 const REQUEST_TIMEOUT_MS = 60_000;
-const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
+const BROWSER_RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
+const DESKTOP_RECONNECT_DELAYS_MS = [2_000, 4_000, 8_000, 8_000, 8_000];
 const decodeWsResponse = decodeUnknownJsonResult(WsResponseSchema);
 const isWebSocketResponseEnvelope = Schema.is(WebSocketResponse);
 
@@ -62,6 +63,8 @@ export class WsTransport {
   private disposed = false;
   private state: TransportState = "connecting";
   private readonly url: string;
+  private readonly reconnectDelaysMs: readonly number[];
+  private readonly suppressTransientConnectionWarnings: boolean;
 
   constructor(url?: string) {
     const bridgeUrl = window.desktopBridge?.getWsUrl();
@@ -73,6 +76,8 @@ export class WsTransport {
         : envUrl && envUrl.length > 0
           ? envUrl
           : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${window.location.port}`);
+    this.reconnectDelaysMs = bridgeUrl ? DESKTOP_RECONNECT_DELAYS_MS : BROWSER_RECONNECT_DELAYS_MS;
+    this.suppressTransientConnectionWarnings = bridgeUrl !== null && bridgeUrl !== undefined;
     this.connect();
   }
 
@@ -201,8 +206,9 @@ export class WsTransport {
     });
 
     ws.addEventListener("error", (event) => {
-      // Log WebSocket errors for debugging (close event will follow)
-      console.warn("WebSocket connection error", { type: event.type, url: this.url });
+      if (!this.suppressTransientConnectionWarnings) {
+        console.warn("WebSocket connection error", { type: event.type, url: this.url });
+      }
     });
   }
 
@@ -289,8 +295,8 @@ export class WsTransport {
     }
 
     const delay =
-      RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)] ??
-      RECONNECT_DELAYS_MS[0]!;
+      this.reconnectDelaysMs[Math.min(this.reconnectAttempt, this.reconnectDelaysMs.length - 1)] ??
+      this.reconnectDelaysMs[0]!;
 
     this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => {

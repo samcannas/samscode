@@ -1,0 +1,665 @@
+{
+  "schemaVersion": 1,
+  "tag": "v0.0.14",
+  "name": "v0.0.14",
+  "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.0.14",
+  "publishedAt": "2026-03-24T12:40:42-07:00",
+  "previousTag": "v0.0.13",
+  "compareUrl": "https://github.com/pingdotgg/t3code/compare/v0.0.13...v0.0.14",
+  "fetchedAt": "2026-03-26T00:49:02.009Z",
+  "releaseNotes": "",
+  "analysis": {
+    "source": "model",
+    "model": "gpt-5.4",
+    "modelOptions": {
+      "reasoningEffort": "high"
+    },
+    "startedAt": "2026-03-26T00:22:12.661Z",
+    "completedAt": "2026-03-26T00:49:01.949Z",
+    "durationMs": 1609288,
+    "modeledCandidateCount": 25,
+    "heuristicCandidateCount": 0,
+    "notes": [
+      "Processed 25 candidate changes in 25 model request(s).",
+      "Chunk 14/25 fell back to heuristics: Provider-backed upstream analysis timed out.",
+      "Recovered commit-e11fb6e77845 with a single-candidate retry.",
+      "Chunk 22/25 fell back to heuristics: Provider-backed upstream analysis timed out.",
+      "Recovered commit-0a503d0cdeb4 with a single-candidate retry.",
+      "Chunk 25/25 fell back to heuristics: Provider-backed upstream analysis timed out.",
+      "Recovered commit-28afb14004bb with a single-candidate retry.",
+      "Model analysis covered 25/25 candidates; 0 remained heuristic."
+    ]
+  },
+  "candidates": [
+    {
+      "id": "commit-56660b04e98c",
+      "commitSha": "56660b04e98c8325428448495bb2e8452a72ca2f",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/56660b04e98c8325428448495bb2e8452a72ca2f",
+      "title": "chore(release): prepare v0.0.13",
+      "summary": "",
+      "authoredAt": "2026-03-20T03:27:19Z",
+      "category": "infra",
+      "areas": [
+        "Contracts",
+        "Desktop app",
+        "Release and CI",
+        "Server runtime",
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/desktop/package.json",
+        "apps/server/package.json",
+        "apps/web/package.json",
+        "bun.lock",
+        "packages/contracts/package.json"
+      ],
+      "changeSummary": "Upstream prepared its v0.0.13 release by bumping package versions and updating the lockfile across the desktop, server, web, and contracts packages. This is release bookkeeping rather than a product or protocol change.",
+      "forkValueSummary": "Sam's Code is a distinct fork with its own package graph, release cadence, and Codex-first server/web priorities. Pulling upstream release metadata into the fork would add churn without improving runtime behavior, reliability, or maintainability.",
+      "recommendedDecision": "ignore",
+      "recommendedReason": "This commit is specific to upstream release packaging and does not represent functionality Sam's Code needs to sync. Any versioning or lockfile updates for the fork should be driven by the fork's own release process and dependency decisions."
+    },
+    {
+      "id": "commit-8f11ea44a75b",
+      "commitSha": "8f11ea44a75ba1a350d888daa8f773ad716c5cd7",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/8f11ea44a75ba1a350d888daa8f773ad716c5cd7",
+      "title": "fix(web): add pointer cursor to add project button (#1220)",
+      "summary": "Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
+      "authoredAt": "2026-03-20T00:00:33-07:00",
+      "category": "fix",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/components/Sidebar.tsx"
+      ],
+      "changeSummary": "Upstream added a pointer cursor style to the sidebar add-project button so it reads as clickable on hover. This is a small Web UI affordance fix in the sidebar control.",
+      "forkValueSummary": "Sam's Code already includes this behavior in the current sidebar implementation, with `cursor-pointer` applied to the add-project button. There is no remaining sync work or product gap to close for the fork.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "The current repository already has the intended pointer cursor behavior on the add-project button in `apps/web/src/components/Sidebar.tsx`, so pulling this upstream change would be redundant."
+    },
+    {
+      "id": "commit-bc12421736fd",
+      "commitSha": "bc12421736fdf014953726b3a1e604652c45b088",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/bc12421736fdf014953726b3a1e604652c45b088",
+      "title": "Show project status dots when collapsed in the sidebar (#1097)",
+      "summary": "",
+      "authoredAt": "2026-03-20T09:54:52-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/components/Sidebar.logic.test.ts",
+        "apps/web/src/components/Sidebar.logic.ts",
+        "apps/web/src/components/Sidebar.tsx"
+      ],
+      "changeSummary": "Upstream changed the sidebar so collapsed project rows still show the highest-priority project status as a colored dot. The chevron remains available on hover instead of status visibility disappearing when the project is collapsed.",
+      "forkValueSummary": "This is a good fit for Sam's Code because the sidebar already emphasizes thread and project runtime state, and collapsed projects still need actionable visibility. The current fork already implements this behavior, including project-level status resolution and collapsed-row dot rendering.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "The current fork already computes a project status indicator and renders a status dot for collapsed projects in the sidebar, so no upstream sync work is needed."
+    },
+    {
+      "id": "commit-d37338970326",
+      "commitSha": "d37338970326c44a183ef4650f8b6985f76a23c7",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/d37338970326c44a183ef4650f8b6985f76a23c7",
+      "title": "feat(web): persist modelOptions, refactor provider specific logic (#1121)",
+      "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>\nCo-authored-by: codex <codex@users.noreply.github.com>",
+      "authoredAt": "2026-03-20T11:17:56-07:00",
+      "category": "feature",
+      "areas": [
+        "Release and CI",
+        "Server runtime",
+        "Shared runtime",
+        "Web UI"
+      ],
+      "changedFiles": [
+        ".gitignore",
+        "apps/web/src/appSettings.test.ts",
+        "apps/web/src/appSettings.ts",
+        "apps/web/src/components/chat/ClaudeTraitsPicker.browser.tsx",
+        "apps/web/src/components/chat/ClaudeTraitsPicker.tsx",
+        "apps/web/src/components/chat/CodexTraitsPicker.browser.tsx",
+        "apps/web/src/components/chat/CodexTraitsPicker.tsx",
+        "apps/web/src/components/chat/composerProviderRegistry.test.tsx",
+        "apps/web/src/components/chat/composerProviderRegistry.tsx",
+        "apps/web/src/components/chat/ProviderModelPicker.browser.tsx",
+        "apps/web/src/components/chat/ProviderModelPicker.tsx",
+        "apps/web/src/components/ChatView.browser.tsx",
+        "apps/web/src/components/ChatView.logic.ts",
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/composerDraftStore.test.ts",
+        "apps/web/src/composerDraftStore.ts",
+        "apps/web/src/hooks/useHandleNewThread.ts",
+        "apps/web/src/routes/_chat.settings.tsx",
+        "packages/shared/src/model.test.ts",
+        "packages/shared/src/model.ts"
+      ],
+      "changeSummary": "Upstream persists selected `modelOptions` so provider traits survive across composer usage, and it restructures composer logic into provider-specific traits picker/registry components. The change touches app settings/tests plus Codex and Claude traits UI paths.",
+      "forkValueSummary": "Sam's Code already has the provider-specific composer registry and separate Codex/Claude traits pickers, and it already persists sticky `modelOptions` plus per-thread draft `modelOptions` in the composer draft store. Syncing this upstream change would mostly duplicate behavior rather than add new fork value.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "The fork already implements the upstream intent through `composerProviderRegistry`, provider-specific traits pickers, and persisted `stickyModelOptions`/draft `modelOptions` in the persisted composer draft store. There may be implementation differences from T3 Code, but no additional sync work appears necessary for the behavior described by this release change."
+    },
+    {
+      "id": "commit-46e63b36121d",
+      "commitSha": "46e63b36121da87195280ef447e5d4f712a115e9",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/46e63b36121da87195280ef447e5d4f712a115e9",
+      "title": "fix(ChatView): update scroll button styles to improve user interaction (#1246)",
+      "summary": "",
+      "authoredAt": "2026-03-20T18:22:04Z",
+      "category": "fix",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "changeSummary": "Upstream adjusted the chat scroll-to-bottom button styling to make the control easier to notice and interact with. The change is limited to the web chat view UI.",
+      "forkValueSummary": "Sam's Code already has a custom scroll-to-bottom pill in `apps/web/src/components/ChatView.tsx` with explicit hover styling, pointer-event handling, and a dedicated interaction state. The upstream intent is already covered by the fork's current implementation.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "The fork already ships a bespoke scroll-to-bottom control with stronger interaction affordances than the upstream summary implies, so there is no sync work to do for this release item."
+    },
+    {
+      "id": "commit-25c70032266a",
+      "commitSha": "25c70032266aea4ad416251dfe46ad12142e136a",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/25c70032266aea4ad416251dfe46ad12142e136a",
+      "title": "fix(web): show health banner for selected provider instead of defaulting to Codex (#1223)",
+      "summary": "",
+      "authoredAt": "2026-03-20T18:28:05Z",
+      "category": "fix",
+      "areas": [
+        "Server runtime",
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/components/chat/ProviderHealthBanner.tsx",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "changeSummary": "Upstream fixed the provider health banner so it reflects the currently selected provider instead of implicitly showing Codex status. The change touched the chat view wiring and the banner component.",
+      "forkValueSummary": "This intent fits Sam's Code because multi-provider state should stay accurate and predictable. The fork already appears to implement this behavior by deriving banner status from `selectedProvider` and passing that status into `ProviderHealthBanner`.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "No sync work is needed. In the current fork, `ChatView.tsx` resolves `activeProviderStatus` with `providerStatuses.find((status) => status.provider === selectedProvider)` and renders `ProviderHealthBanner` with that status, so the banner already follows the selected provider rather than defaulting to Codex."
+    },
+    {
+      "id": "commit-34cef6202b6c",
+      "commitSha": "34cef6202b6c2eb0594df0eca412b36daf819ba2",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/34cef6202b6c2eb0594df0eca412b36daf819ba2",
+      "title": "fix(web): update add-project toggle label in cancel state (#1248)",
+      "summary": "",
+      "authoredAt": "2026-03-20T18:31:24Z",
+      "category": "fix",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/components/Sidebar.tsx"
+      ],
+      "changeSummary": "Upstream updates the add-project toggle label so the control reflects its cancel state instead of continuing to read like an add action. This is a small Web UI wording fix in the sidebar.",
+      "forkValueSummary": "Sam's Code already has this intent implemented with explicit cancel-state labels for both the main add-project toggle and the add-by-path toggle, backed by sidebar logic tests. There is no remaining sync value unless upstream changed adjacent behavior beyond the label text.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "The current fork already resolves the toggle label to \"Cancel add project\" when manual entry is open, and related sidebar tests cover that behavior, so no upstream sync work is needed."
+    },
+    {
+      "id": "commit-ef2569196f16",
+      "commitSha": "ef2569196f164df1096ebd8c614fafa0ebc43be9",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/ef2569196f164df1096ebd8c614fafa0ebc43be9",
+      "title": "Prefer Claude user ID for telemetry identity (#1249)",
+      "summary": "",
+      "authoredAt": "2026-03-20T11:43:39-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Server runtime"
+      ],
+      "changedFiles": [
+        "apps/server/src/telemetry/Identify.ts"
+      ],
+      "changeSummary": "Upstream changed telemetry identity selection to prefer Claude's user ID when it is available. This is an analytics attribution adjustment in `apps/server/src/telemetry/Identify.ts`, not a provider-runtime behavior change.",
+      "forkValueSummary": "Sam's Code currently has Claude provider support but no server telemetry or identify module to receive this change. Pulling this into the fork would add upstream-specific analytics logic without improving performance, reliability, or session behavior.",
+      "recommendedDecision": "ignore",
+      "recommendedReason": "The fork does not currently implement the telemetry surface this patch modifies, so there is no direct sync target. If Sam's Code later adds product telemetry, identity rules should be designed for the fork's own telemetry model rather than copied from upstream."
+    },
+    {
+      "id": "commit-9e29c9d72895",
+      "commitSha": "9e29c9d72895022322da52d8e961b38702bad9cc",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/9e29c9d72895022322da52d8e961b38702bad9cc",
+      "title": "feat: added configurable base directory. (#826)",
+      "summary": "Co-authored-by: Mohammed Muzammil Anwar <muzammil@pluginhive.com>\nCo-authored-by: Julius Marminge <julius0216@outlook.com>",
+      "authoredAt": "2026-03-20T15:12:52-07:00",
+      "category": "feature",
+      "areas": [
+        "Desktop app",
+        "Server runtime"
+      ],
+      "changedFiles": [
+        ".docs/scripts.md",
+        "apps/desktop/src/main.ts",
+        "apps/server/integration/orchestrationEngine.integration.test.ts",
+        "apps/server/integration/OrchestrationEngineHarness.integration.ts",
+        "apps/server/src/attachmentPaths.ts",
+        "apps/server/src/attachmentStore.test.ts",
+        "apps/server/src/attachmentStore.ts",
+        "apps/server/src/config.ts",
+        "apps/server/src/git/Layers/CodexTextGeneration.test.ts",
+        "apps/server/src/git/Layers/CodexTextGeneration.ts",
+        "apps/server/src/git/Layers/GitCore.test.ts",
+        "apps/server/src/git/Layers/GitCore.ts",
+        "apps/server/src/git/Layers/GitManager.test.ts",
+        "apps/server/src/keybindings.test.ts",
+        "apps/server/src/main.test.ts",
+        "apps/server/src/main.ts",
+        "apps/server/src/orchestration/Layers/CheckpointReactor.test.ts",
+        "apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts",
+        "apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts",
+        "apps/server/src/orchestration/Layers/ProjectionPipeline.ts",
+        "apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts",
+        "apps/server/src/os-jank.ts",
+        "apps/server/src/persistence/Layers/Sqlite.ts",
+        "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts",
+        "apps/server/src/serverLayers.ts",
+        "apps/server/src/serverLogger.ts",
+        "apps/server/src/telemetry/Identify.ts",
+        "apps/server/src/telemetry/Layers/AnalyticsService.test.ts",
+        "apps/server/src/terminal/Layers/Manager.ts",
+        "apps/server/src/wsServer.test.ts",
+        "apps/server/src/wsServer.ts",
+        "REMOTE.md",
+        "scripts/dev-runner.test.ts",
+        "scripts/dev-runner.ts",
+        "turbo.json"
+      ],
+      "changeSummary": "Upstream added a configurable base directory for app/server data and threaded that setting through attachment path and storage handling. The change is partly desktop-oriented and partly about where runtime artifacts are stored.",
+      "forkValueSummary": "Sam's Code is currently server/web-focused, and the desktop-specific portion does not map cleanly to the fork. A configurable storage root could become useful for predictable session and attachment persistence, but it adds config and path-safety surface while the fork is still early and evolving.",
+      "recommendedDecision": "defer",
+      "recommendedReason": "The underlying intent is potentially valuable for future persistence and deployment flexibility, but it should not be pulled now. Revisit once Sam's Code has a more stable storage model and a concrete need for configurable runtime data locations."
+    },
+    {
+      "id": "commit-2b6640af1e6e",
+      "commitSha": "2b6640af1e6e058f2c7206409d92bf5332fc9e90",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/2b6640af1e6e058f2c7206409d92bf5332fc9e90",
+      "title": "fix(claude): load Claude SDK filesystem setting sources (#1334)",
+      "summary": "",
+      "authoredAt": "2026-03-23T10:09:29-07:00",
+      "category": "fix",
+      "areas": [
+        "Server runtime"
+      ],
+      "changedFiles": [
+        "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts"
+      ],
+      "changeSummary": "Upstream fixed the Claude adapter so Claude SDK settings from filesystem-backed sources are loaded instead of relying only on explicitly passed settings. This makes Claude runtime behavior match the SDK's normal config resolution more closely.",
+      "forkValueSummary": "Sam's Code has a custom Claude adapter and currently appears to build a narrow in-memory `settings` object for `thinking` and `fastMode` without loading filesystem setting sources. Pulling in the upstream intent would improve Claude compatibility and reduce surprising mismatches with user or workspace Claude configuration.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "The behavior is not already present in the fork, and the upstream intent aligns with reliability for the Claude provider. It should be adapted carefully so filesystem-derived Claude settings are merged in without regressing Sam's Code's explicit provider options or predictability guarantees."
+    },
+    {
+      "id": "commit-754cded24abe",
+      "commitSha": "754cded24abe6eff74e18a7e741a25c20cfb981d",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/754cded24abe6eff74e18a7e741a25c20cfb981d",
+      "title": "Load PTY adapter at runtime (#1311)",
+      "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
+      "authoredAt": "2026-03-23T10:40:51-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Server runtime"
+      ],
+      "changedFiles": [
+        "apps/server/src/serverLayers.ts",
+        "apps/server/src/terminal/Layers/BunPTY.ts",
+        "apps/server/src/terminal/Layers/NodePTY.ts"
+      ],
+      "changeSummary": "Upstream changed PTY adapter selection to load the Bun or Node implementation at runtime instead of statically importing both. The intent is to avoid cross-runtime PTY coupling during startup and packaging.",
+      "forkValueSummary": "Sam's Code currently statically imports both PTY adapters in `apps/server/src/serverLayers.ts` while running under Bun in development and Node in production. Adopting the upstream intent would better match the fork's reliability-first runtime goals and reduce risk around native PTY loading.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "The fork does not already have runtime PTY adapter loading, and this change is a good fit for its mixed Bun/Node server runtime model."
+    },
+    {
+      "id": "commit-843d6d8678c9",
+      "commitSha": "843d6d8678c917a434c63834a98ceb99e5367530",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/843d6d8678c917a434c63834a98ceb99e5367530",
+      "title": "fix: add license field to npm package (#1272)",
+      "summary": "",
+      "authoredAt": "2026-03-23T23:31:54Z",
+      "category": "fix",
+      "areas": [
+        "Server runtime"
+      ],
+      "changedFiles": [
+        "apps/server/package.json"
+      ],
+      "changeSummary": "Upstream added a `license` field to `apps/server/package.json` so the server package has explicit npm metadata. This is a packaging metadata fix rather than a runtime behavior change.",
+      "forkValueSummary": "In Sam's Code, `apps/server` is an internal workspace app inside a private monorepo, not a separately published npm package. The field is currently absent, but adding it does not materially improve performance, reliability, or protocol behavior in the fork.",
+      "recommendedDecision": "ignore",
+      "recommendedReason": "The upstream intent is tied to npm package publication metadata, while this fork's server is an internal application package. Since the change does not affect runtime behavior or operational correctness in Sam's Code, it is not worth syncing as upstream release work."
+    },
+    {
+      "id": "commit-d415558915f3",
+      "commitSha": "d415558915f3a06e92ce7e46acc07fce69374ea6",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/d415558915f3a06e92ce7e46acc07fce69374ea6",
+      "title": "Flatten Git service layer and switch server paths to base dir (#1255)",
+      "summary": "",
+      "authoredAt": "2026-03-23T17:02:09-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Branding and assets",
+        "Server runtime",
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/server/integration/OrchestrationEngineHarness.integration.ts",
+        "apps/server/src/git/Layers/GitCore.test.ts",
+        "apps/server/src/git/Layers/GitCore.ts",
+        "apps/server/src/git/Layers/GitManager.test.ts",
+        "apps/server/src/git/Layers/GitService.test.ts",
+        "apps/server/src/git/Layers/GitService.ts",
+        "apps/server/src/git/Services/GitCore.ts",
+        "apps/server/src/git/Services/GitService.ts",
+        "apps/server/src/checkpointing/Layers/CheckpointStore.ts",
+        "apps/server/src/orchestration/Layers/CheckpointReactor.test.ts",
+        "apps/server/src/provider/Layers/ClaudeSdkFastMode.probe.test.ts",
+        "apps/server/src/serverLayers.ts",
+        "apps/web/package.json",
+        "apps/web/public/mockServiceWorker.js",
+        "bun.lock",
+        "scripts/claude-fast-mode-probe.ts",
+        "scripts/claude-haiku-thinking-probe.ts"
+      ],
+      "changeSummary": "Upstream collapsed the separate Git service/layer split into a flatter Git module layout and updated related tests/imports. It also moved server path handling to derive runtime locations from a shared base directory.",
+      "forkValueSummary": "Sam's Code already derives server state, logs, attachments, and worktree paths from `baseDir`, so the path-handling intent is already covered. The Git flattening does not fit this fork's established `Services` plus `Layers` architecture, which is used consistently across server domains.",
+      "recommendedDecision": "ignore",
+      "recommendedReason": "No sync work is needed for the base-dir path behavior, and porting the Git flattening would create local churn without improving Sam's Code behavior or consistency. Revisit only if the fork chooses to remove the `Services`/`Layers` pattern repo-wide rather than just in Git."
+    },
+    {
+      "id": "commit-e11fb6e77845",
+      "commitSha": "e11fb6e778456a98e0066894bfb572864f98bb20",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/e11fb6e778456a98e0066894bfb572864f98bb20",
+      "title": "fix(web): avoid false draft attachment persistence warnings (#1153)",
+      "summary": "",
+      "authoredAt": "2026-03-23T17:10:23-07:00",
+      "category": "fix",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/composerDraftStore.ts"
+      ],
+      "changeSummary": "Upstream fixes a Web UI issue in `composerDraftStore.ts` where draft attachment persistence warnings can be shown incorrectly.",
+      "forkValueSummary": "Potentially useful only if Sam's Code has the same draft-attachment persistence path and currently shows misleading warning states during draft save/restore. The value is UX correctness, not core protocol or reliability behavior.",
+      "recommendedDecision": "defer",
+      "recommendedReason": "This is a narrow composer-draft UX fix, and the metadata provided is not enough to confirm the same bug exists in Sam's Code. If the fork does not persist attachments the same way, or does not surface this warning path, the change is irrelevant; if it does, the fix is worth adapting rather than blindly applying."
+    },
+    {
+      "id": "commit-2b08d8669646",
+      "commitSha": "2b08d8669646109ffa101b1b767f4c1922d2e072",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/2b08d8669646109ffa101b1b767f4c1922d2e072",
+      "title": "Add resizable chat sidebar (#1347)",
+      "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
+      "authoredAt": "2026-03-24T02:26:33Z",
+      "category": "feature",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/routes/_chat.tsx"
+      ],
+      "changeSummary": "Upstream makes the main chat sidebar resizable instead of fixed-width in the chat layout. The intent is to let users adjust the thread list panel width to fit their workflow.",
+      "forkValueSummary": "Sam's Code already has shared resizable sidebar infrastructure and uses it for the inline diff sidebar, but the main left chat sidebar in the current route layout is still fixed-width. This is a good fit because the fork leans heavily on sidebar-driven project and thread navigation.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "The behavior is not already present in the main chat sidebar, and the repo already contains the reusable primitives needed to add it with low implementation risk. The upstream intent aligns with Sam's Code UX without forcing an upstream-identical implementation."
+    },
+    {
+      "id": "commit-e823f8f14ecb",
+      "commitSha": "e823f8f14ecb99c92345dbd72ba82b836858ba09",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/e823f8f14ecb99c92345dbd72ba82b836858ba09",
+      "title": "ci(github): exclude test files from mixed PR size calculation (#1105)",
+      "summary": "",
+      "authoredAt": "2026-03-23T20:16:13-07:00",
+      "category": "infra",
+      "areas": [
+        "Release and CI"
+      ],
+      "changedFiles": [
+        ".github/workflows/pr-size.yml"
+      ],
+      "changeSummary": "Upstream adjusted its PR-size workflow so test-file changes do not count toward the mixed PR size calculation. The goal is to keep test-heavy PRs from being labeled as larger than their production-code footprint.",
+      "forkValueSummary": "Sam's Code currently uses a simple total-lines PR size labeler based on GitHub's additions and deletions, not an upstream-style mixed calculation. In this fork, tests are a core reliability signal and excluding them would make review-size labels less representative of actual review effort.",
+      "recommendedDecision": "ignore",
+      "recommendedReason": "The upstream intent does not map cleanly onto the fork's simpler workflow, and adopting it would add CI complexity for low value. Because this repository treats tests as first-class and review-relevant, excluding test churn from PR sizing would reduce rather than improve signal."
+    },
+    {
+      "id": "commit-d6408a29494c",
+      "commitSha": "d6408a29494c27d55a71fbb62f9ea9a8c6241786",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/d6408a29494c27d55a71fbb62f9ea9a8c6241786",
+      "title": "refactor(settings): simplify settings layout and controls (#1288)",
+      "summary": "",
+      "authoredAt": "2026-03-24T00:34:11-07:00",
+      "category": "refactor",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/appSettings.test.ts",
+        "apps/web/src/appSettings.ts",
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/components/ui/select.tsx",
+        "apps/web/src/routes/_chat.settings.tsx"
+      ],
+      "changeSummary": "Upstream refactors the settings screen to use a simpler layout and streamlined controls, with related updates to settings state, chat integration, tests, and the select UI.",
+      "forkValueSummary": "Sam's Code already has a consolidated, sectioned settings page with simplified switches and selects, plus fork-specific settings for Codex, models, speech-to-text, safety, and upstream sync. A direct sync would mostly overlap existing behavior while cutting across fork-specific UX.",
+      "recommendedDecision": "already-present",
+      "recommendedReason": "The current fork already implements the upstream intent in its own form through apps/web/src/routes/_chat.settings.tsx, apps/web/src/appSettings.ts, apps/web/src/components/ChatView.tsx, and apps/web/src/components/ui/select.tsx. The remaining differences are product divergence, not a missing settings-layout simplification that still needs to be pulled in."
+    },
+    {
+      "id": "commit-1371ce2ccef7",
+      "commitSha": "1371ce2ccef7342399a6a020e69073334cfa364b",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/1371ce2ccef7342399a6a020e69073334cfa364b",
+      "title": "Run draft-thread project scripts from resolved project/worktree cwd (#1178)",
+      "summary": "Co-authored-by: Cursor Agent <cursoragent@cursor.com>",
+      "authoredAt": "2026-03-24T01:49:32-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        ".gitignore",
+        "apps/web/src/components/ChatView.browser.tsx",
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/composerDraftStore.test.ts",
+        "apps/web/src/composerDraftStore.ts",
+        "apps/web/src/lib/terminalFocus.test.ts",
+        "apps/web/src/lib/terminalFocus.ts",
+        "apps/web/src/projectScripts.test.ts",
+        "apps/web/src/projectScripts.ts"
+      ],
+      "changeSummary": "Upstream changed draft-thread script launching so project scripts run from the resolved project or worktree directory instead of a less specific cwd. The update also touched draft-store and terminal-focus UI plumbing around that flow.",
+      "forkValueSummary": "The underlying intent is sound because Sam's Code should execute any project-scoped actions from the correct resolved workspace. However, this exact draft-thread and project-script UX appears upstream-specific and does not clearly map to Sam's Code's current Codex-first session model.",
+      "recommendedDecision": "defer",
+      "recommendedReason": "Keep the intent in mind for any future project/worktree command surface, but do not sync this change now. Sam's Code's current source-of-truth architecture is centered on provider sessions and orchestration events rather than draft-thread script execution, so pulling this in immediately would risk importing mismatched UI behavior and abstractions."
+    },
+    {
+      "id": "commit-384f35084e8a",
+      "commitSha": "384f35084e8a94985d37c95e17b3da83ed153e57",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/384f35084e8a94985d37c95e17b3da83ed153e57",
+      "title": "Stream git hook progress events for stacked git actions (#1214)",
+      "summary": "Co-authored-by: Cursor Agent <cursoragent@cursor.com>",
+      "authoredAt": "2026-03-24T02:25:17-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Contracts",
+        "Server runtime",
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/server/src/git/Layers/GitCore.ts",
+        "apps/server/src/git/Layers/GitManager.test.ts",
+        "apps/server/src/git/Layers/GitManager.ts",
+        "apps/server/src/git/Services/GitCore.ts",
+        "apps/server/src/git/Services/GitManager.ts",
+        "apps/server/src/wsServer.test.ts",
+        "apps/server/src/wsServer.ts",
+        "apps/web/src/components/GitActionsControl.tsx",
+        "apps/web/src/lib/gitReactQuery.ts",
+        "apps/web/src/wsNativeApi.test.ts",
+        "apps/web/src/wsNativeApi.ts",
+        "apps/web/src/wsTransport.test.ts",
+        "apps/web/src/wsTransport.ts",
+        "packages/contracts/src/git.test.ts",
+        "packages/contracts/src/git.ts",
+        "packages/contracts/src/ipc.ts",
+        "packages/contracts/src/ws.test.ts",
+        "packages/contracts/src/ws.ts"
+      ],
+      "changeSummary": "Upstream adds streaming progress events for git hooks during stacked git actions and wires those events through contracts, server runtime, and the web control surface. The intent is better visibility into long-running git workflow steps.",
+      "forkValueSummary": "Sam's Code is currently a Codex-first session/orchestration app, and this change is tightly coupled to a dedicated stacked-git action feature area rather than the fork's core provider/session UX. The observability idea is sound, but pulling this exact surface now would add cross-layer complexity without clear product value unless Sam's Code introduces first-class git action flows.",
+      "recommendedDecision": "defer",
+      "recommendedReason": "Defer until the fork has an explicit stacked git action or comparable long-running git operation surface that needs user-visible progress. At that point, adopt the intent through Sam's Code's orchestration event model instead of syncing the upstream implementation directly."
+    },
+    {
+      "id": "commit-be1abc88fda0",
+      "commitSha": "be1abc88fda0beacb606b2e7de6f4e82cc31155f",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/be1abc88fda0beacb606b2e7de6f4e82cc31155f",
+      "title": "feat: add terminal toggle button to chat header (#633)",
+      "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>\nCo-authored-by: codex <codex@users.noreply.github.com>",
+      "authoredAt": "2026-03-24T09:28:41Z",
+      "category": "feature",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/components/chat/ChatHeader.tsx",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "changeSummary": "Upstream adds a terminal toggle button to the chat header so users can open or close the terminal from visible chat chrome instead of relying only on shortcuts.",
+      "forkValueSummary": "Sam's Code already has terminal open state, keyboard handling for `terminal.toggle`, and a `ThreadTerminalDrawer`, but the header currently exposes only a diff toggle. A header terminal toggle would improve discoverability for a core workflow without changing the underlying terminal model.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "The behavior is not already present in the fork: `apps/web/src/components/chat/ChatHeader.tsx` has no terminal toggle prop/button, while `apps/web/src/components/ChatView.tsx` only exposes terminal visibility through shortcut handling and conditional drawer rendering. The upstream intent fits Sam's Code well and should be adapted to the fork's richer terminal UX rather than skipped."
+    },
+    {
+      "id": "commit-d4a7e1ac0b03",
+      "commitSha": "d4a7e1ac0b03399376a0acde78b58365715415ae",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/d4a7e1ac0b03399376a0acde78b58365715415ae",
+      "title": "feat: add word wrapping setting and in-panel button (#1326)",
+      "summary": "",
+      "authoredAt": "2026-03-24T09:34:22-07:00",
+      "category": "feature",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/src/appSettings.ts",
+        "apps/web/src/components/DiffPanel.tsx",
+        "apps/web/src/routes/_chat.settings.tsx"
+      ],
+      "changeSummary": "Upstream adds a diff word-wrapping preference plus an in-panel control to toggle wrapping without leaving the diff view. The change touches stored app settings, the diff panel UI, and the settings screen.",
+      "forkValueSummary": "Sam's Code already has a dedicated diff panel and app-level settings infrastructure, but it does not currently expose any diff wrapping preference. This is a good fit because long patches are common in agent workflows and an optional toggle improves readability without forcing a global behavior change.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "The upstream intent maps cleanly onto existing Sam's Code surfaces, the behavior is not already present, and the feature adds practical diff usability for narrow layouts and long lines."
+    },
+    {
+      "id": "commit-0a503d0cdeb4",
+      "commitSha": "0a503d0cdeb4e6cd8a9952c930d6c61ce28104fa",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/0a503d0cdeb4e6cd8a9952c930d6c61ce28104fa",
+      "title": "fix(provider,claude): handle prompt stream interrupt on session stop (#1365)",
+      "summary": "Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>",
+      "authoredAt": "2026-03-24T09:40:19-07:00",
+      "category": "fix",
+      "areas": [
+        "Server runtime"
+      ],
+      "changedFiles": [
+        "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts"
+      ],
+      "changeSummary": "Upstream fixes Claude provider shutdown behavior so an in-flight prompt stream interrupt is handled cleanly when a session is stopped.",
+      "forkValueSummary": "High fork value if Sam's Code exposes Claude sessions: it improves server-runtime correctness during session stop, reduces shutdown race/stream interruption bugs, and aligns with the project's priority on predictable behavior during failures and partial streams.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "This is a reliability fix in a provider adapter, not a product-specific feature. It matches Sam's Code priorities around robust session stop/reconnect behavior and is likely worth adapting anywhere Claude streaming can still be active while a session is being torn down."
+    },
+    {
+      "id": "commit-529315b4c8ec",
+      "commitSha": "529315b4c8ec274980b06c41170f48b01fed6646",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/529315b4c8ec274980b06c41170f48b01fed6646",
+      "title": "Preserve terminal history across ANSI control sequences (#1367)",
+      "summary": "",
+      "authoredAt": "2026-03-24T10:34:41-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Server runtime"
+      ],
+      "changedFiles": [
+        "apps/server/src/terminal/Layers/Manager.test.ts",
+        "apps/server/src/terminal/Layers/Manager.ts",
+        "apps/server/src/terminal/Services/Manager.ts"
+      ],
+      "changeSummary": "Upstream changed its server-side terminal manager so ANSI control sequences do not erase or corrupt prior terminal scrollback. The accompanying tests verify history is preserved while control-sequence behavior still applies correctly.",
+      "forkValueSummary": "Sam's Code is documented as a Codex-first structured-event UI rather than an upstream-style terminal-runtime product. This only becomes high-value if the fork later adds a first-class PTY/ANSI terminal surface with persistent scrollback behavior.",
+      "recommendedDecision": "defer",
+      "recommendedReason": "Do not pull this now because it is coupled to upstream terminal-layer internals that are outside the fork's stated core architecture. Revisit if Sam's Code introduces raw terminal rendering or terminal-history management, and adapt the intent then instead of directly syncing the implementation."
+    },
+    {
+      "id": "commit-8f3515572de0",
+      "commitSha": "8f3515572de09d41cbfe586a94696277ef000bb9",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/8f3515572de09d41cbfe586a94696277ef000bb9",
+      "title": "Surface context window usage in the UI (#1351)",
+      "summary": "",
+      "authoredAt": "2026-03-24T12:36:51-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Contracts",
+        "Server runtime",
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts",
+        "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+        "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.test.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts",
+        "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "apps/web/src/components/chat/MessagesTimeline.test.tsx",
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/lib/contextWindow.test.ts",
+        "apps/web/src/lib/contextWindow.ts",
+        "apps/web/src/session-logic.test.ts",
+        "apps/web/src/session-logic.ts",
+        "packages/contracts/src/providerRuntime.test.ts",
+        "packages/contracts/src/providerRuntime.ts"
+      ],
+      "changeSummary": "Upstream adds context window usage visibility in the UI by plumbing provider token/context usage through contracts, runtime ingestion, and chat rendering. It also extends provider adapters so usage updates are emitted consistently.",
+      "forkValueSummary": "This fits Sam's Code because session predictability under long-running turns and compaction pressure matters, and users currently have no visible context-budget signal. The fork already has partial groundwork with a `thread.token-usage.updated` runtime event and Codex emission, but the data is not projected into orchestration state or rendered in `apps/web/src`.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "The behavior is not already present end-to-end in the fork: `packages/contracts/src/providerRuntime.ts` defines the runtime event and `apps/server/src/provider/Layers/CodexAdapter.ts` emits it, but `apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`, persistence/orchestration schemas, and `apps/web/src/components/chat/MessagesTimeline.tsx` do not consume or display usage. The upstream intent is valuable for Sam's Code, but it should be adapted to the fork's orchestration-first architecture rather than copied verbatim."
+    },
+    {
+      "id": "commit-28afb14004bb",
+      "commitSha": "28afb14004bbb92a523a87c334de02421f72a627",
+      "commitUrl": "https://github.com/pingdotgg/t3code/commit/28afb14004bbb92a523a87c334de02421f72a627",
+      "title": "Sort sidebar projects and threads by recency (#1372)",
+      "summary": "",
+      "authoredAt": "2026-03-24T12:40:42-07:00",
+      "category": "maintenance",
+      "areas": [
+        "Web UI"
+      ],
+      "changedFiles": [
+        "apps/web/package.json",
+        "apps/web/src/appSettings.test.ts",
+        "apps/web/src/appSettings.ts",
+        "apps/web/src/components/Sidebar.logic.test.ts",
+        "apps/web/src/components/Sidebar.logic.ts",
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/store.test.ts",
+        "apps/web/src/store.ts",
+        "apps/web/src/types.ts",
+        "bun.lock"
+      ],
+      "changeSummary": "Updates the web sidebar data flow so projects and threads are ordered by most recent activity, with related logic and state covered by tests and settings/store adjustments.",
+      "forkValueSummary": "High fork value for Sam's Code because the product is session- and thread-centric, and recency ordering improves navigation during active multi-session use without changing core provider/server behavior. The change is confined to the Web UI and aligns with the repo priorities of predictable UX and maintainable shared sidebar/store logic.",
+      "recommendedDecision": "apply",
+      "recommendedReason": "This is a low-risk, directly relevant UX correctness improvement for a Codex-first interface where users need the latest active work surfaced first. The touched areas match Sam's Code's sidebar/state architecture, the upstream change includes test updates, and there is no indication it conflicts with the fork's stated priorities. It should be adapted rather than skipped."
+    }
+  ]
+}
