@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AppSettingsSchema,
+  DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
+  DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
   DEFAULT_TIMESTAMP_FORMAT,
   getAppModelOptions,
   getCustomModelOptionsByProvider,
@@ -55,7 +57,7 @@ describe("getAppModelOptions", () => {
   it("keeps the currently selected custom model available even if it is no longer saved", () => {
     const options = getAppModelOptions("codex", [], "custom/selected-model");
 
-    expect(options.at(-1)).toEqual({
+    expect(options[options.length - 1]).toEqual({
       slug: "custom/selected-model",
       name: "custom/selected-model",
       isCustom: true,
@@ -107,6 +109,16 @@ describe("resolveAppModelSelection", () => {
 describe("timestamp format defaults", () => {
   it("defaults timestamp format to locale", () => {
     expect(DEFAULT_TIMESTAMP_FORMAT).toBe("locale");
+  });
+});
+
+describe("sidebar sort defaults", () => {
+  it("defaults project sorting to updated_at", () => {
+    expect(DEFAULT_SIDEBAR_PROJECT_SORT_ORDER).toBe("updated_at");
+  });
+
+  it("defaults thread sorting to updated_at", () => {
+    expect(DEFAULT_SIDEBAR_THREAD_SORT_ORDER).toBe("updated_at");
   });
 });
 
@@ -213,7 +225,10 @@ describe("AppSettingsSchema", () => {
       codexHomePath: "",
       defaultThreadEnvMode: "local",
       confirmThreadDelete: false,
+      diffWordWrap: false,
       enableAssistantStreaming: false,
+      sidebarProjectSortOrder: DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
+      sidebarThreadSortOrder: DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
       customCodexModels: [],
       customClaudeModels: [],

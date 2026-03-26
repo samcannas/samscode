@@ -39,13 +39,7 @@
       "summary": "",
       "authoredAt": "2026-03-20T03:27:19Z",
       "category": "infra",
-      "areas": [
-        "Contracts",
-        "Desktop app",
-        "Release and CI",
-        "Server runtime",
-        "Web UI"
-      ],
+      "areas": ["Contracts", "Desktop app", "Release and CI", "Server runtime", "Web UI"],
       "changedFiles": [
         "apps/desktop/package.json",
         "apps/server/package.json",
@@ -66,12 +60,8 @@
       "summary": "Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>",
       "authoredAt": "2026-03-20T00:00:33-07:00",
       "category": "fix",
-      "areas": [
-        "Web UI"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/Sidebar.tsx"
-      ],
+      "areas": ["Web UI"],
+      "changedFiles": ["apps/web/src/components/Sidebar.tsx"],
       "changeSummary": "Upstream added a pointer cursor style to the sidebar add-project button so it reads as clickable on hover. This is a small Web UI affordance fix in the sidebar control.",
       "forkValueSummary": "Sam's Code already includes this behavior in the current sidebar implementation, with `cursor-pointer` applied to the add-project button. There is no remaining sync work or product gap to close for the fork.",
       "recommendedDecision": "already-present",
@@ -85,9 +75,7 @@
       "summary": "",
       "authoredAt": "2026-03-20T09:54:52-07:00",
       "category": "maintenance",
-      "areas": [
-        "Web UI"
-      ],
+      "areas": ["Web UI"],
       "changedFiles": [
         "apps/web/src/components/Sidebar.logic.test.ts",
         "apps/web/src/components/Sidebar.logic.ts",
@@ -106,12 +94,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>\nCo-authored-by: codex <codex@users.noreply.github.com>",
       "authoredAt": "2026-03-20T11:17:56-07:00",
       "category": "feature",
-      "areas": [
-        "Release and CI",
-        "Server runtime",
-        "Shared runtime",
-        "Web UI"
-      ],
+      "areas": ["Release and CI", "Server runtime", "Shared runtime", "Web UI"],
       "changedFiles": [
         ".gitignore",
         "apps/web/src/appSettings.test.ts",
@@ -147,12 +130,8 @@
       "summary": "",
       "authoredAt": "2026-03-20T18:22:04Z",
       "category": "fix",
-      "areas": [
-        "Web UI"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/ChatView.tsx"
-      ],
+      "areas": ["Web UI"],
+      "changedFiles": ["apps/web/src/components/ChatView.tsx"],
       "changeSummary": "Upstream adjusted the chat scroll-to-bottom button styling to make the control easier to notice and interact with. The change is limited to the web chat view UI.",
       "forkValueSummary": "Sam's Code already has a custom scroll-to-bottom pill in `apps/web/src/components/ChatView.tsx` with explicit hover styling, pointer-event handling, and a dedicated interaction state. The upstream intent is already covered by the fork's current implementation.",
       "recommendedDecision": "already-present",
@@ -166,10 +145,7 @@
       "summary": "",
       "authoredAt": "2026-03-20T18:28:05Z",
       "category": "fix",
-      "areas": [
-        "Server runtime",
-        "Web UI"
-      ],
+      "areas": ["Server runtime", "Web UI"],
       "changedFiles": [
         "apps/web/src/components/chat/ProviderHealthBanner.tsx",
         "apps/web/src/components/ChatView.tsx"
@@ -187,12 +163,8 @@
       "summary": "",
       "authoredAt": "2026-03-20T18:31:24Z",
       "category": "fix",
-      "areas": [
-        "Web UI"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/Sidebar.tsx"
-      ],
+      "areas": ["Web UI"],
+      "changedFiles": ["apps/web/src/components/Sidebar.tsx"],
       "changeSummary": "Upstream updates the add-project toggle label so the control reflects its cancel state instead of continuing to read like an add action. This is a small Web UI wording fix in the sidebar.",
       "forkValueSummary": "Sam's Code already has this intent implemented with explicit cancel-state labels for both the main add-project toggle and the add-by-path toggle, backed by sidebar logic tests. There is no remaining sync value unless upstream changed adjacent behavior beyond the label text.",
       "recommendedDecision": "already-present",
@@ -206,12 +178,8 @@
       "summary": "",
       "authoredAt": "2026-03-20T11:43:39-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "apps/server/src/telemetry/Identify.ts"
-      ],
+      "areas": ["Server runtime"],
+      "changedFiles": ["apps/server/src/telemetry/Identify.ts"],
       "changeSummary": "Upstream changed telemetry identity selection to prefer Claude's user ID when it is available. This is an analytics attribution adjustment in `apps/server/src/telemetry/Identify.ts`, not a provider-runtime behavior change.",
       "forkValueSummary": "Sam's Code currently has Claude provider support but no server telemetry or identify module to receive this change. Pulling this into the fork would add upstream-specific analytics logic without improving performance, reliability, or session behavior.",
       "recommendedDecision": "ignore",
@@ -225,10 +193,7 @@
       "summary": "Co-authored-by: Mohammed Muzammil Anwar <muzammil@pluginhive.com>\nCo-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-20T15:12:52-07:00",
       "category": "feature",
-      "areas": [
-        "Desktop app",
-        "Server runtime"
-      ],
+      "areas": ["Desktop app", "Server runtime"],
       "changedFiles": [
         ".docs/scripts.md",
         "apps/desktop/src/main.ts",
@@ -281,9 +246,7 @@
       "summary": "",
       "authoredAt": "2026-03-23T10:09:29-07:00",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
         "apps/server/src/provider/Layers/ClaudeAdapter.ts"
@@ -301,9 +264,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-23T10:40:51-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/serverLayers.ts",
         "apps/server/src/terminal/Layers/BunPTY.ts",
@@ -322,12 +283,8 @@
       "summary": "",
       "authoredAt": "2026-03-23T23:31:54Z",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "apps/server/package.json"
-      ],
+      "areas": ["Server runtime"],
+      "changedFiles": ["apps/server/package.json"],
       "changeSummary": "Upstream added a `license` field to `apps/server/package.json` so the server package has explicit npm metadata. This is a packaging metadata fix rather than a runtime behavior change.",
       "forkValueSummary": "In Sam's Code, `apps/server` is an internal workspace app inside a private monorepo, not a separately published npm package. The field is currently absent, but adding it does not materially improve performance, reliability, or protocol behavior in the fork.",
       "recommendedDecision": "ignore",
@@ -341,11 +298,7 @@
       "summary": "",
       "authoredAt": "2026-03-23T17:02:09-07:00",
       "category": "maintenance",
-      "areas": [
-        "Branding and assets",
-        "Server runtime",
-        "Web UI"
-      ],
+      "areas": ["Branding and assets", "Server runtime", "Web UI"],
       "changedFiles": [
         "apps/server/integration/OrchestrationEngineHarness.integration.ts",
         "apps/server/src/git/Layers/GitCore.test.ts",
@@ -378,12 +331,8 @@
       "summary": "",
       "authoredAt": "2026-03-23T17:10:23-07:00",
       "category": "fix",
-      "areas": [
-        "Web UI"
-      ],
-      "changedFiles": [
-        "apps/web/src/composerDraftStore.ts"
-      ],
+      "areas": ["Web UI"],
+      "changedFiles": ["apps/web/src/composerDraftStore.ts"],
       "changeSummary": "Upstream fixes a Web UI issue in `composerDraftStore.ts` where draft attachment persistence warnings can be shown incorrectly.",
       "forkValueSummary": "Potentially useful only if Sam's Code has the same draft-attachment persistence path and currently shows misleading warning states during draft save/restore. The value is UX correctness, not core protocol or reliability behavior.",
       "recommendedDecision": "defer",
@@ -397,12 +346,8 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-24T02:26:33Z",
       "category": "feature",
-      "areas": [
-        "Web UI"
-      ],
-      "changedFiles": [
-        "apps/web/src/routes/_chat.tsx"
-      ],
+      "areas": ["Web UI"],
+      "changedFiles": ["apps/web/src/routes/_chat.tsx"],
       "changeSummary": "Upstream makes the main chat sidebar resizable instead of fixed-width in the chat layout. The intent is to let users adjust the thread list panel width to fit their workflow.",
       "forkValueSummary": "Sam's Code already has shared resizable sidebar infrastructure and uses it for the inline diff sidebar, but the main left chat sidebar in the current route layout is still fixed-width. This is a good fit because the fork leans heavily on sidebar-driven project and thread navigation.",
       "recommendedDecision": "apply",
@@ -416,12 +361,8 @@
       "summary": "",
       "authoredAt": "2026-03-23T20:16:13-07:00",
       "category": "infra",
-      "areas": [
-        "Release and CI"
-      ],
-      "changedFiles": [
-        ".github/workflows/pr-size.yml"
-      ],
+      "areas": ["Release and CI"],
+      "changedFiles": [".github/workflows/pr-size.yml"],
       "changeSummary": "Upstream adjusted its PR-size workflow so test-file changes do not count toward the mixed PR size calculation. The goal is to keep test-heavy PRs from being labeled as larger than their production-code footprint.",
       "forkValueSummary": "Sam's Code currently uses a simple total-lines PR size labeler based on GitHub's additions and deletions, not an upstream-style mixed calculation. In this fork, tests are a core reliability signal and excluding them would make review-size labels less representative of actual review effort.",
       "recommendedDecision": "ignore",
@@ -435,9 +376,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T00:34:11-07:00",
       "category": "refactor",
-      "areas": [
-        "Web UI"
-      ],
+      "areas": ["Web UI"],
       "changedFiles": [
         "apps/web/src/appSettings.test.ts",
         "apps/web/src/appSettings.ts",
@@ -458,9 +397,7 @@
       "summary": "Co-authored-by: Cursor Agent <cursoragent@cursor.com>",
       "authoredAt": "2026-03-24T01:49:32-07:00",
       "category": "maintenance",
-      "areas": [
-        "Web UI"
-      ],
+      "areas": ["Web UI"],
       "changedFiles": [
         ".gitignore",
         "apps/web/src/components/ChatView.browser.tsx",
@@ -486,11 +423,7 @@
       "summary": "Co-authored-by: Cursor Agent <cursoragent@cursor.com>",
       "authoredAt": "2026-03-24T02:25:17-07:00",
       "category": "maintenance",
-      "areas": [
-        "Contracts",
-        "Server runtime",
-        "Web UI"
-      ],
+      "areas": ["Contracts", "Server runtime", "Web UI"],
       "changedFiles": [
         "apps/server/src/git/Layers/GitCore.ts",
         "apps/server/src/git/Layers/GitManager.test.ts",
@@ -524,9 +457,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>\nCo-authored-by: codex <codex@users.noreply.github.com>",
       "authoredAt": "2026-03-24T09:28:41Z",
       "category": "feature",
-      "areas": [
-        "Web UI"
-      ],
+      "areas": ["Web UI"],
       "changedFiles": [
         "apps/web/src/components/chat/ChatHeader.tsx",
         "apps/web/src/components/ChatView.tsx"
@@ -544,9 +475,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T09:34:22-07:00",
       "category": "feature",
-      "areas": [
-        "Web UI"
-      ],
+      "areas": ["Web UI"],
       "changedFiles": [
         "apps/web/src/appSettings.ts",
         "apps/web/src/components/DiffPanel.tsx",
@@ -565,9 +494,7 @@
       "summary": "Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>",
       "authoredAt": "2026-03-24T09:40:19-07:00",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
         "apps/server/src/provider/Layers/ClaudeAdapter.ts"
@@ -585,9 +512,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T10:34:41-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/terminal/Layers/Manager.test.ts",
         "apps/server/src/terminal/Layers/Manager.ts",
@@ -606,11 +531,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T12:36:51-07:00",
       "category": "maintenance",
-      "areas": [
-        "Contracts",
-        "Server runtime",
-        "Web UI"
-      ],
+      "areas": ["Contracts", "Server runtime", "Web UI"],
       "changedFiles": [
         "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts",
         "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
@@ -641,9 +562,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T12:40:42-07:00",
       "category": "maintenance",
-      "areas": [
-        "Web UI"
-      ],
+      "areas": ["Web UI"],
       "changedFiles": [
         "apps/web/package.json",
         "apps/web/src/appSettings.test.ts",

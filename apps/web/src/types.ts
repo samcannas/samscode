@@ -80,6 +80,8 @@ export interface Project {
   cwd: string;
   model: string;
   expanded: boolean;
+  createdAt: string;
+  updatedAt: string;
   scripts: ProjectScript[];
 }
 
@@ -95,6 +97,7 @@ export interface Thread {
   proposedPlans: ProposedPlan[];
   error: string | null;
   createdAt: string;
+  updatedAt: string;
   latestTurn: OrchestrationLatestTurn | null;
   lastVisitedAt?: string | undefined;
   branch: string | null;

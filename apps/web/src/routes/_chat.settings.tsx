@@ -73,6 +73,17 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
+const SIDEBAR_PROJECT_SORT_LABELS = {
+  updated_at: "Last activity",
+  created_at: "Created at",
+  manual: "Manual",
+} as const;
+
+const SIDEBAR_THREAD_SORT_LABELS = {
+  updated_at: "Last activity",
+  created_at: "Created at",
+} as const;
+
 function formatByteSize(sizeBytes: number): string {
   if (sizeBytes >= 1024 * 1024 * 1024) {
     return `${(sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -1132,6 +1143,128 @@ function SettingsRouteView() {
                   Control how assistant output is rendered during a turn.
                 </p>
               </div>
+
+              <div className="mb-4 flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Diff line wrapping</p>
+                  <p className="text-xs text-muted-foreground">
+                    Set the default wrap state when the diff panel opens.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.diffWordWrap}
+                  onCheckedChange={(checked) =>
+                    updateSettings({
+                      diffWordWrap: Boolean(checked),
+                    })
+                  }
+                  aria-label="Wrap diff lines by default"
+                />
+              </div>
+
+              {settings.diffWordWrap !== defaults.diffWordWrap ? (
+                <div className="mb-4 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        diffWordWrap: defaults.diffWordWrap,
+                      })
+                    }
+                  >
+                    Restore default
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="mb-4 space-y-4 rounded-lg border border-border bg-background px-3 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Sidebar sorting</p>
+                  <p className="text-xs text-muted-foreground">
+                    Choose how projects and threads are ordered in the left sidebar.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground">Projects</p>
+                    <Select
+                      value={settings.sidebarProjectSortOrder}
+                      onValueChange={(value) => {
+                        if (
+                          value !== "updated_at" &&
+                          value !== "created_at" &&
+                          value !== "manual"
+                        ) {
+                          return;
+                        }
+                        updateSettings({ sidebarProjectSortOrder: value });
+                      }}
+                    >
+                      <SelectTrigger aria-label="Sidebar project sort order">
+                        <SelectValue>
+                          {SIDEBAR_PROJECT_SORT_LABELS[settings.sidebarProjectSortOrder]}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup align="end">
+                        <SelectItem value="updated_at">
+                          {SIDEBAR_PROJECT_SORT_LABELS.updated_at}
+                        </SelectItem>
+                        <SelectItem value="created_at">
+                          {SIDEBAR_PROJECT_SORT_LABELS.created_at}
+                        </SelectItem>
+                        <SelectItem value="manual">{SIDEBAR_PROJECT_SORT_LABELS.manual}</SelectItem>
+                      </SelectPopup>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground">Threads</p>
+                    <Select
+                      value={settings.sidebarThreadSortOrder}
+                      onValueChange={(value) => {
+                        if (value !== "updated_at" && value !== "created_at") {
+                          return;
+                        }
+                        updateSettings({ sidebarThreadSortOrder: value });
+                      }}
+                    >
+                      <SelectTrigger aria-label="Sidebar thread sort order">
+                        <SelectValue>
+                          {SIDEBAR_THREAD_SORT_LABELS[settings.sidebarThreadSortOrder]}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup align="end">
+                        <SelectItem value="updated_at">
+                          {SIDEBAR_THREAD_SORT_LABELS.updated_at}
+                        </SelectItem>
+                        <SelectItem value="created_at">
+                          {SIDEBAR_THREAD_SORT_LABELS.created_at}
+                        </SelectItem>
+                      </SelectPopup>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {settings.sidebarProjectSortOrder !== defaults.sidebarProjectSortOrder ||
+              settings.sidebarThreadSortOrder !== defaults.sidebarThreadSortOrder ? (
+                <div className="mb-4 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        sidebarProjectSortOrder: defaults.sidebarProjectSortOrder,
+                        sidebarThreadSortOrder: defaults.sidebarThreadSortOrder,
+                      })
+                    }
+                  >
+                    Restore sidebar defaults
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
                 <div>

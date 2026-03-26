@@ -86,6 +86,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
+  getVisibleThreadsForProject,
   resolveProjectAddButtonLabel,
   resolveProjectAddButtonPressed,
   resolveProjectAddErrorPresentation,
@@ -95,6 +96,8 @@ import {
   resolveSidebarNewThreadEnvMode,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  sortProjectsForSidebar,
+  sortThreadsForSidebar,
   shouldRotateProjectAddIcon,
   shouldClearThreadSelectionOnMouseDown,
   shouldShowProjectAddByPathButton,
@@ -391,13 +394,10 @@ export default function Sidebar() {
 
   const focusMostRecentThreadForProject = useCallback(
     (projectId: ProjectId) => {
-      const latestThread = threads
-        .filter((thread) => thread.projectId === projectId)
-        .toSorted((a, b) => {
-          const byDate = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-          if (byDate !== 0) return byDate;
-          return b.id.localeCompare(a.id);
-        })[0];
+      const latestThread = sortThreadsForSidebar(
+        threads.filter((thread) => thread.projectId === projectId),
+        appSettings.sidebarThreadSortOrder,
+      )[0];
       if (!latestThread) return;
 
       void navigate({
@@ -405,7 +405,7 @@ export default function Sidebar() {
         params: { threadId: latestThread.id },
       });
     },
-    [navigate, threads],
+    [appSettings.sidebarThreadSortOrder, navigate, threads],
   );
 
   const addProjectFromPath = useCallback(
@@ -945,6 +945,10 @@ export default function Sidebar() {
 
   const handleProjectDragEnd = useCallback(
     (event: DragEndEvent) => {
+      if (appSettings.sidebarProjectSortOrder !== "manual") {
+        dragInProgressRef.current = false;
+        return;
+      }
       dragInProgressRef.current = false;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
@@ -953,13 +957,19 @@ export default function Sidebar() {
       if (!activeProject || !overProject) return;
       reorderProjects(activeProject.id, overProject.id);
     },
-    [projects, reorderProjects],
+    [appSettings.sidebarProjectSortOrder, projects, reorderProjects],
   );
 
-  const handleProjectDragStart = useCallback((_event: DragStartEvent) => {
-    dragInProgressRef.current = true;
-    suppressProjectClickAfterDragRef.current = true;
-  }, []);
+  const handleProjectDragStart = useCallback(
+    (_event: DragStartEvent) => {
+      if (appSettings.sidebarProjectSortOrder !== "manual") {
+        return;
+      }
+      dragInProgressRef.current = true;
+      suppressProjectClickAfterDragRef.current = true;
+    },
+    [appSettings.sidebarProjectSortOrder],
+  );
 
   const handleProjectDragCancel = useCallback((_event: DragCancelEvent) => {
     dragInProgressRef.current = false;
@@ -968,6 +978,12 @@ export default function Sidebar() {
   const handleProjectTitlePointerDownCapture = useCallback(() => {
     suppressProjectClickAfterDragRef.current = false;
   }, []);
+
+  const sortedProjects = useMemo(
+    () => sortProjectsForSidebar(projects, threads, appSettings.sidebarProjectSortOrder),
+    [appSettings.sidebarProjectSortOrder, projects, threads],
+  );
+  const isManualProjectSorting = appSettings.sidebarProjectSortOrder === "manual";
 
   const handleProjectTitleClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>, projectId: ProjectId) => {
@@ -1383,18 +1399,14 @@ export default function Sidebar() {
           >
             <SidebarMenu>
               <SortableContext
-                items={projects.map((project) => project.id)}
+                items={sortedProjects.map((project) => project.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {projects.map((project) => {
-                  const projectThreads = threads
-                    .filter((thread) => thread.projectId === project.id)
-                    .toSorted((a, b) => {
-                      const byDate =
-                        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                      if (byDate !== 0) return byDate;
-                      return b.id.localeCompare(a.id);
-                    });
+                {sortedProjects.map((project) => {
+                  const projectThreads = sortThreadsForSidebar(
+                    threads.filter((thread) => thread.projectId === project.id),
+                    appSettings.sidebarThreadSortOrder,
+                  );
                   const projectStatus = resolveProjectStatusIndicator(
                     projectThreads.map((thread) =>
                       resolveThreadStatusPill({
@@ -1404,11 +1416,12 @@ export default function Sidebar() {
                     ),
                   );
                   const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
-                  const hasHiddenThreads = projectThreads.length > THREAD_PREVIEW_LIMIT;
-                  const visibleThreads =
-                    hasHiddenThreads && !isThreadListExpanded
-                      ? projectThreads.slice(0, THREAD_PREVIEW_LIMIT)
-                      : projectThreads;
+                  const { hasHiddenThreads, visibleThreads } = getVisibleThreadsForProject({
+                    threads: projectThreads,
+                    activeThreadId: routeThreadId ?? undefined,
+                    isThreadListExpanded,
+                    previewLimit: THREAD_PREVIEW_LIMIT,
+                  });
                   const orderedProjectThreadIds = projectThreads.map((thread) => thread.id);
 
                   return (
@@ -1418,9 +1431,13 @@ export default function Sidebar() {
                           <div className="group/project-header relative">
                             <SidebarMenuButton
                               size="sm"
-                              className="gap-2 px-2 py-1.5 text-left cursor-grab active:cursor-grabbing hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground"
-                              {...dragHandleProps.attributes}
-                              {...dragHandleProps.listeners}
+                              className={`gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground ${
+                                isManualProjectSorting
+                                  ? "cursor-grab active:cursor-grabbing"
+                                  : "cursor-pointer"
+                              }`}
+                              {...(isManualProjectSorting ? dragHandleProps.attributes : {})}
+                              {...(isManualProjectSorting ? dragHandleProps.listeners : {})}
                               onPointerDownCapture={handleProjectTitlePointerDownCapture}
                               onClick={(event) => handleProjectTitleClick(event, project.id)}
                               onKeyDown={(event) => handleProjectTitleKeyDown(event, project.id)}
@@ -1668,7 +1685,7 @@ export default function Sidebar() {
                                               : "text-muted-foreground/40"
                                           }`}
                                         >
-                                          {formatRelativeTime(thread.createdAt)}
+                                          {formatRelativeTime(thread.updatedAt ?? thread.createdAt)}
                                         </span>
                                       </div>
                                     </SidebarMenuSubButton>
