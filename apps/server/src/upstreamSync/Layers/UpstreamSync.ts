@@ -608,7 +608,62 @@ async function buildCandidates(input: {
   return candidates;
 }
 
-const UPSTREAM_ANALYSIS_PROVIDER_TIMEOUT_MS = 90_000;
+const UPSTREAM_ANALYSIS_PROVIDER_IDLE_TIMEOUT_MS = 25_000;
+const UPSTREAM_ANALYSIS_PROVIDER_MAX_TIMEOUT_MS = 180_000;
+
+function buildChunkAnalysisPrompt(input: {
+  releaseTag: string;
+  previousTag: string | null;
+  releaseNotes: string;
+  candidates: readonly UpstreamSyncReleaseCandidateIntake[];
+}): string {
+  return [
+    "You review upstream release changes for Sam's Code, a fork of T3 Code.",
+    "Use the current repository as source of truth and return ONLY JSON.",
+    "Stay in planning mode: do not run commands, do not edit files, and do not use tools unless absolutely necessary.",
+    "Return a JSON object with key `candidates`.",
+    "Each candidate must include: id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
+    "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
+    "- `apply` means the upstream intent should land in the fork, even if implementation differs.",
+    "- `already-present` means the fork already has the behavior and no sync work is needed.",
+    "- `ignore` means the change should not be pulled into the fork.",
+    "- `defer` means the change may matter later but should not be pulled now.",
+    "- `changeSummary` should explain in 1-2 short sentences what changed upstream.",
+    "- `forkValueSummary` should explain in 1-2 short sentences why this is or is not a good fit for Sam's Code.",
+    "- Do not include markdown fences or prose outside the JSON.",
+    "",
+    `Release tag: ${input.releaseTag}`,
+    ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
+    input.releaseNotes.trim().length > 0
+      ? ["", "Release notes:", limitSection(input.releaseNotes, 8_000)].join("\n")
+      : "",
+    "",
+    "Candidates:",
+    limitSection(JSON.stringify(input.candidates.map(toAnalysisCandidatePayload), null, 2), 8_000),
+  ]
+    .filter((section) => section.length > 0)
+    .join("\n");
+}
+
+function buildSingleCandidateAnalysisPrompt(input: {
+  releaseTag: string;
+  previousTag: string | null;
+  candidate: UpstreamSyncReleaseCandidateIntake;
+}): string {
+  return [
+    "You review a single upstream T3 Code change for Sam's Code.",
+    "Stay in planning mode: do not run commands, do not edit files, and do not use tools unless absolutely necessary.",
+    "Return ONLY JSON with key `candidates` and exactly one object inside it.",
+    "Fields: id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
+    "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
+    "",
+    `Release tag: ${input.releaseTag}`,
+    ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
+    "",
+    "Candidate:",
+    JSON.stringify(toAnalysisCandidatePayload(input.candidate), null, 2),
+  ].join("\n");
+}
 
 async function runProviderBackedAnalysis(input: {
   providerService: typeof ProviderService.Service;
@@ -629,6 +684,35 @@ async function runProviderBackedAnalysis(input: {
   let sawTurnCompleted = false;
   let sawRuntimeError = false;
   let nextAssistantLogThreshold = 1_000;
+  let idleTimeout: ReturnType<typeof setTimeout> | null = null;
+  let maxTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const scheduleIdleTimeout = () => {
+    if (idleTimeout) {
+      clearTimeout(idleTimeout);
+    }
+    idleTimeout = setTimeout(() => {
+      logger.warn("upstream provider analysis idle timeout", {
+        label: input.label,
+        threadId,
+        model: input.model,
+        reasoningEffort: input.modelOptions?.reasoningEffort ?? null,
+        assistantChars: assistantText.length,
+        contentDeltaEvents,
+        taskProgressEvents,
+        lastTaskProgress: lastTaskProgress ? truncateText(lastTaskProgress, 180) : null,
+        hasTaskSummary: Boolean(taskSummary?.trim()),
+        sawTurnCompleted,
+        sawRuntimeError,
+      });
+      fail(new Error("Provider-backed upstream analysis became idle before completing."));
+    }, UPSTREAM_ANALYSIS_PROVIDER_IDLE_TIMEOUT_MS);
+    idleTimeout.unref?.();
+  };
+
+  const noteActivity = () => {
+    scheduleIdleTimeout();
+  };
 
   logger.info("upstream provider analysis session starting", {
     label: input.label,
@@ -668,6 +752,7 @@ async function runProviderBackedAnalysis(input: {
             if (event.payload.streamKind === "assistant_text") {
               contentDeltaEvents += 1;
               assistantText += event.payload.delta;
+              noteActivity();
               if (assistantText.length >= nextAssistantLogThreshold) {
                 logger.info("upstream provider analysis assistant output", {
                   label: input.label,
@@ -683,6 +768,7 @@ async function runProviderBackedAnalysis(input: {
           case "task.progress": {
             taskProgressEvents += 1;
             lastTaskProgress = event.payload.description;
+            noteActivity();
             logger.info("upstream provider analysis task progress", {
               label: input.label,
               threadId,
@@ -693,6 +779,7 @@ async function runProviderBackedAnalysis(input: {
           case "task.completed": {
             if (event.payload.summary) {
               taskSummary = event.payload.summary;
+              noteActivity();
               logger.info("upstream provider analysis task completed", {
                 label: input.label,
                 threadId,
@@ -751,8 +838,9 @@ async function runProviderBackedAnalysis(input: {
     ),
   );
 
-  const timeout = setTimeout(() => {
-    logger.warn("upstream provider analysis timeout", {
+  scheduleIdleTimeout();
+  maxTimeout = setTimeout(() => {
+    logger.warn("upstream provider analysis max timeout", {
       label: input.label,
       threadId,
       model: input.model,
@@ -766,8 +854,8 @@ async function runProviderBackedAnalysis(input: {
       sawRuntimeError,
     });
     fail(new Error("Provider-backed upstream analysis timed out."));
-  }, UPSTREAM_ANALYSIS_PROVIDER_TIMEOUT_MS);
-  timeout.unref?.();
+  }, UPSTREAM_ANALYSIS_PROVIDER_MAX_TIMEOUT_MS);
+  maxTimeout.unref?.();
 
   try {
     await Effect.runPromise(
@@ -805,7 +893,12 @@ async function runProviderBackedAnalysis(input: {
   try {
     return await resultPromise;
   } finally {
-    clearTimeout(timeout);
+    if (idleTimeout) {
+      clearTimeout(idleTimeout);
+    }
+    if (maxTimeout) {
+      clearTimeout(maxTimeout);
+    }
     await Effect.runPromiseExit(Fiber.interrupt(eventFiber));
     await Effect.runPromiseExit(input.providerService.stopSession({ threadId }));
   }
@@ -853,42 +946,32 @@ async function enrichCandidatesWithModelAnalysis(input: {
   let failedChunkCount = 0;
   let heuristicCandidateCount = 0;
   for (const [chunkIndex, chunk] of candidateChunks.entries()) {
+    const chunkLabel =
+      chunk.length === 1
+        ? `candidate ${chunk[0]!.id}`
+        : `chunk ${chunkIndex + 1}/${candidateChunks.length}`;
+    const chunkPrompt =
+      chunk.length === 1
+        ? buildSingleCandidateAnalysisPrompt({
+            releaseTag: input.releaseTag,
+            previousTag: input.previousTag,
+            candidate: chunk[0]!,
+          })
+        : buildChunkAnalysisPrompt({
+            releaseTag: input.releaseTag,
+            previousTag: input.previousTag,
+            releaseNotes: input.releaseNotes,
+            candidates: chunk,
+          });
     try {
-      const prompt = [
-        "You review upstream release changes for Sam's Code, a fork of T3 Code.",
-        "Use the current repository as source of truth and return ONLY JSON.",
-        "Stay in planning mode: do not run commands, do not edit files, and do not use tools unless absolutely necessary.",
-        "Return a JSON object with key `candidates`.",
-        "Each candidate must include: id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
-        "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
-        "- `apply` means the upstream intent should land in the fork, even if implementation differs.",
-        "- `already-present` means the fork already has the behavior and no sync work is needed.",
-        "- `ignore` means the change should not be pulled into the fork.",
-        "- `defer` means the change may matter later but should not be pulled now.",
-        "- `changeSummary` should explain in 1-2 short sentences what changed upstream.",
-        "- `forkValueSummary` should explain in 1-2 short sentences why this is or is not a good fit for Sam's Code.",
-        "- Do not include markdown fences or prose outside the JSON.",
-        "",
-        `Release tag: ${input.releaseTag}`,
-        ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
-        input.releaseNotes.trim().length > 0
-          ? ["", "Release notes:", limitSection(input.releaseNotes, 8_000)].join("\n")
-          : "",
-        "",
-        "Candidates:",
-        limitSection(JSON.stringify(chunk.map(toAnalysisCandidatePayload), null, 2), 8_000),
-      ]
-        .filter((section) => section.length > 0)
-        .join("\n");
-
       const rawOutput = await runProviderBackedAnalysis({
         providerService: input.providerService,
         cwd: input.cwd,
         model: input.model,
         ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
         ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
-        prompt,
-        label: `chunk ${chunkIndex + 1}/${candidateChunks.length}`,
+        prompt: chunkPrompt,
+        label: chunkLabel,
       });
       const analysis = decodeOutput(JSON.parse(extractStructuredJson(rawOutput)));
       for (const candidate of chunk) {
@@ -919,29 +1002,26 @@ async function enrichCandidatesWithModelAnalysis(input: {
         error: error instanceof Error ? error.message : String(error),
       });
 
+      if (chunk.length === 1) {
+        const candidate = chunk[0]!;
+        analyzedById.set(candidate.id, candidate);
+        heuristicCandidateCount += 1;
+        continue;
+      }
+
       for (const candidate of chunk) {
         try {
-          const retryPrompt = [
-            "You review a single upstream T3 Code change for Sam's Code.",
-            "Stay in planning mode: do not run commands, do not edit files, and do not use tools unless absolutely necessary.",
-            "Return ONLY JSON with key `candidates` and exactly one object inside it.",
-            "Fields: id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
-            "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
-            "",
-            `Release tag: ${input.releaseTag}`,
-            ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
-            "",
-            "Candidate:",
-            JSON.stringify(toAnalysisCandidatePayload(candidate), null, 2),
-          ].join("\n");
-
           const rawRetry = await runProviderBackedAnalysis({
             providerService: input.providerService,
             cwd: input.cwd,
             model: input.model,
             ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
             ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
-            prompt: retryPrompt,
+            prompt: buildSingleCandidateAnalysisPrompt({
+              releaseTag: input.releaseTag,
+              previousTag: input.previousTag,
+              candidate,
+            }),
             label: `candidate ${candidate.id}`,
           });
           const retry = decodeOutput(JSON.parse(extractStructuredJson(rawRetry)));
