@@ -7,7 +7,7 @@
 
 ## Project Snapshot
 
-Sam's Code is a minimal web GUI for using coding agents like Codex and Claude.
+Sam's Code is a minimal desktop app for using coding agents like Codex and Claude.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
@@ -25,21 +25,22 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 ## Package Roles
 
-- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
-- `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
+- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio) and manages provider sessions for the desktop app.
+- `apps/desktop`: Electron shell. Owns native windowing, preload APIs, desktop updates, and backend lifecycle.
+- `apps/desktop-renderer`: React/Vite desktop renderer. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
 - `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
-- `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@samscode/shared/git`) — no barrel index.
+- `packages/shared`: Shared runtime utilities consumed by both server and desktop surfaces. Uses explicit subpath exports (e.g. `@samscode/shared/git`) — no barrel index.
 
 ## Codex App Server (Important)
 
-Sam's Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the browser through WebSocket push messages.
+Sam's Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the desktop renderer through WebSocket push messages.
 
 How we use it in this codebase:
 
 - Session startup/resume and turn lifecycle are brokered in `apps/server/src/codexAppServerManager.ts`.
 - Provider dispatch and thread event logging are coordinated in `apps/server/src/providerManager.ts`.
 - WebSocket server routes NativeApi methods in `apps/server/src/wsServer.ts`.
-- Web app consumes orchestration domain events via WebSocket push on channel `orchestration.domainEvent` (provider runtime activity is projected into orchestration events server-side).
+- Desktop renderer consumes orchestration domain events via WebSocket push on channel `orchestration.domainEvent` (provider runtime activity is projected into orchestration events server-side).
 
 Docs:
 

@@ -186,10 +186,10 @@ function buildDefaultAreaPolicyFile(): UpstreamSyncAreaPolicyFile {
     schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
     areas: [
       {
-        id: "web",
-        label: "Web UI",
-        pathPrefixes: ["apps/web/"],
-        titleKeywords: ["web", "chat", "sidebar", "settings", "ui"],
+        id: "desktop-renderer",
+        label: "Desktop renderer",
+        pathPrefixes: ["apps/desktop-renderer/"],
+        titleKeywords: ["renderer", "chat", "sidebar", "settings", "ui"],
         defaultDecision: "apply",
       },
       {
@@ -239,7 +239,7 @@ function buildDefaultAreaPolicyFile(): UpstreamSyncAreaPolicyFile {
       {
         id: "assets",
         label: "Branding and assets",
-        pathPrefixes: ["assets/", "apps/web/public/", "apps/desktop/resources/"],
+        pathPrefixes: ["assets/", "apps/desktop/resources/"],
         titleKeywords: ["icon", "branding", "logo", "asset"],
         defaultDecision: "ignore",
         reason: "Fork branding intentionally diverges from upstream.",

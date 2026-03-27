@@ -1,4 +1,5 @@
 import * as Http from "node:http";
+import { resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, vi } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
@@ -32,7 +33,6 @@ const testLayer = Layer.mergeAll(
   Layer.succeed(CliConfig, {
     cwd: "/tmp/t3-test-workspace",
     fixPath: Effect.void,
-    resolveStaticDir: Effect.undefined,
   } satisfies CliConfigShape),
   Layer.succeed(NetService, {
     canListenOnHost: () => Effect.succeed(true),
@@ -45,17 +45,13 @@ const testLayer = Layer.mergeAll(
     stopSignal: Effect.void,
   } satisfies ServerShape),
   Layer.succeed(Open, {
-    openBrowser: (_target: string) => Effect.void,
     openInEditor: () => Effect.void,
   } satisfies OpenShape),
   FetchHttpClient.layer,
   NodeServices.layer,
 );
 
-const runCli = (
-  args: ReadonlyArray<string>,
-  env: Record<string, string> = { SAMSCODE_NO_BROWSER: "true" },
-) => {
+const runCli = (args: ReadonlyArray<string>, env: Record<string, string> = {}) => {
   return Command.runWith(scCli, { version: "0.0.0-test" })(args).pipe(
     Effect.provide(
       ConfigProvider.layer(
@@ -89,9 +85,6 @@ it.layer(testLayer)("server CLI command", (it) => {
         "0.0.0.0",
         "--home-dir",
         "/tmp/t3-cli-home",
-        "--dev-url",
-        "http://127.0.0.1:5173",
-        "--no-browser",
         "--auth-token",
         "auth-secret",
       ]);
@@ -100,13 +93,12 @@ it.layer(testLayer)("server CLI command", (it) => {
       assert.equal(resolvedConfig?.mode, "desktop");
       assert.equal(resolvedConfig?.port, 4010);
       assert.equal(resolvedConfig?.host, "0.0.0.0");
-      assert.equal(resolvedConfig?.baseDir, "/tmp/t3-cli-home");
-      assert.equal(resolvedConfig?.stateDir, "/tmp/t3-cli-home/dev");
-      assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
-      assert.equal(resolvedConfig?.noBrowser, true);
+      assert.equal(resolvedConfig?.baseDir, resolve("/tmp/t3-cli-home"));
+      assert.equal(resolvedConfig?.stateDir, resolve("/tmp/t3-cli-home/userdata"));
+      assert.equal(resolvedConfig?.desktopRendererUrl, undefined);
       assert.equal(resolvedConfig?.authToken, "auth-secret");
       assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, false);
-      assert.equal(resolvedConfig?.logWebSocketEvents, true);
+      assert.equal(resolvedConfig?.logWebSocketEvents, false);
       assert.equal(stop.mock.calls.length, 1);
     }),
   );
@@ -127,8 +119,7 @@ it.layer(testLayer)("server CLI command", (it) => {
         SAMSCODE_PORT: "4999",
         SAMSCODE_HOST: "100.88.10.4",
         SAMSCODE_HOME: "/tmp/t3-env-home",
-        VITE_DEV_SERVER_URL: "http://localhost:5173",
-        SAMSCODE_NO_BROWSER: "true",
+        SAMSCODE_DESKTOP_RENDERER_URL: "http://localhost:5733",
         SAMSCODE_AUTH_TOKEN: "env-token",
       });
 
@@ -136,10 +127,9 @@ it.layer(testLayer)("server CLI command", (it) => {
       assert.equal(resolvedConfig?.mode, "desktop");
       assert.equal(resolvedConfig?.port, 4999);
       assert.equal(resolvedConfig?.host, "100.88.10.4");
-      assert.equal(resolvedConfig?.baseDir, "/tmp/t3-env-home");
-      assert.equal(resolvedConfig?.stateDir, "/tmp/t3-env-home/dev");
-      assert.equal(resolvedConfig?.devUrl?.toString(), "http://localhost:5173/");
-      assert.equal(resolvedConfig?.noBrowser, true);
+      assert.equal(resolvedConfig?.baseDir, resolve("/tmp/t3-env-home"));
+      assert.equal(resolvedConfig?.stateDir, resolve("/tmp/t3-env-home/dev"));
+      assert.equal(resolvedConfig?.desktopRendererUrl?.toString(), "http://localhost:5733/");
       assert.equal(resolvedConfig?.authToken, "env-token");
       assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, false);
       assert.equal(resolvedConfig?.logWebSocketEvents, true);
@@ -150,31 +140,19 @@ it.layer(testLayer)("server CLI command", (it) => {
   it.effect("prefers --mode over SAMSCODE_MODE", () =>
     Effect.gen(function* () {
       findAvailablePort.mockImplementation((_preferred: number) => Effect.succeed(4666));
-      yield* runCli(["--mode", "web"], {
+      yield* runCli(["--mode", "headless"], {
         SAMSCODE_MODE: "desktop",
-        SAMSCODE_NO_BROWSER: "true",
       });
 
       assert.deepStrictEqual(findAvailablePort.mock.calls, [[3773]]);
       assert.equal(start.mock.calls.length, 1);
-      assert.equal(resolvedConfig?.mode, "web");
+      assert.equal(resolvedConfig?.mode, "headless");
       assert.equal(resolvedConfig?.port, 4666);
       assert.equal(resolvedConfig?.host, undefined);
     }),
   );
 
-  it.effect("prefers --no-browser over SAMSCODE_NO_BROWSER", () =>
-    Effect.gen(function* () {
-      yield* runCli(["--no-browser"], {
-        SAMSCODE_NO_BROWSER: "false",
-      });
-
-      assert.equal(start.mock.calls.length, 1);
-      assert.equal(resolvedConfig?.noBrowser, true);
-    }),
-  );
-
-  it.effect("uses dynamic port discovery in web mode when port is omitted", () =>
+  it.effect("uses dynamic port discovery in headless mode when port is omitted", () =>
     Effect.gen(function* () {
       findAvailablePort.mockImplementation((_preferred: number) => Effect.succeed(5444));
       yield* runCli([]);
@@ -182,7 +160,7 @@ it.layer(testLayer)("server CLI command", (it) => {
       assert.deepStrictEqual(findAvailablePort.mock.calls, [[3773]]);
       assert.equal(start.mock.calls.length, 1);
       assert.equal(resolvedConfig?.port, 5444);
-      assert.equal(resolvedConfig?.mode, "web");
+      assert.equal(resolvedConfig?.mode, "headless");
     }),
   );
 
@@ -190,7 +168,6 @@ it.layer(testLayer)("server CLI command", (it) => {
     Effect.gen(function* () {
       yield* runCli([], {
         SAMSCODE_MODE: "desktop",
-        SAMSCODE_NO_BROWSER: "true",
       });
 
       assert.equal(findAvailablePort.mock.calls.length, 0);
@@ -205,7 +182,6 @@ it.layer(testLayer)("server CLI command", (it) => {
     Effect.gen(function* () {
       yield* runCli(["--host", "0.0.0.0"], {
         SAMSCODE_MODE: "desktop",
-        SAMSCODE_NO_BROWSER: "true",
       });
 
       assert.equal(start.mock.calls.length, 1);
@@ -220,7 +196,6 @@ it.layer(testLayer)("server CLI command", (it) => {
         SAMSCODE_MODE: "desktop",
         SAMSCODE_LOG_WS_EVENTS: "false",
         SAMSCODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
-        SAMSCODE_NO_BROWSER: "true",
       });
 
       assert.equal(start.mock.calls.length, 1);
@@ -232,15 +207,6 @@ it.layer(testLayer)("server CLI command", (it) => {
   it.effect("does not start server for invalid --mode values", () =>
     Effect.gen(function* () {
       yield* runCli(["--mode", "invalid"]);
-
-      assert.equal(start.mock.calls.length, 0);
-      assert.equal(stop.mock.calls.length, 0);
-    }),
-  );
-
-  it.effect("does not start server for invalid --dev-url values", () =>
-    Effect.gen(function* () {
-      yield* runCli(["--dev-url", "not-a-url"]).pipe(Effect.catch(() => Effect.void));
 
       assert.equal(start.mock.calls.length, 0);
       assert.equal(stop.mock.calls.length, 0);

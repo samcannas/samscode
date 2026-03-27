@@ -11,7 +11,7 @@ const workspaceFiles = [
   "bun.lock",
   "apps/server/package.json",
   "apps/desktop/package.json",
-  "apps/web/package.json",
+  "apps/desktop-renderer/package.json",
   "packages/contracts/package.json",
   "packages/shared/package.json",
   "scripts/package.json",

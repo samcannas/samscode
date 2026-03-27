@@ -10,7 +10,7 @@ import { Argument, Command, Flag } from "effect/unstable/cli";
 import { ChildProcess } from "effect/unstable/process";
 
 const BASE_SERVER_PORT = 3773;
-const BASE_WEB_PORT = 5733;
+const BASE_RENDERER_PORT = 5733;
 const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 
@@ -23,18 +23,16 @@ const MODE_ARGS = {
     "run",
     "dev",
     "--ui=tui",
-    "--filter=@samscode/contracts",
-    "--filter=@samscode/web",
-    "--filter=samscode",
+    "--filter=@samscode/desktop-renderer",
+    "--filter=@samscode/desktop",
     "--parallel",
   ],
   "dev:server": ["run", "dev", "--filter=samscode"],
-  "dev:web": ["run", "dev", "--filter=@samscode/web"],
   "dev:desktop": [
     "run",
     "dev",
     "--filter=@samscode/desktop",
-    "--filter=@samscode/web",
+    "--filter=@samscode/desktop-renderer",
     "--parallel",
   ],
 } as const satisfies Record<string, ReadonlyArray<string>>;
@@ -69,12 +67,6 @@ const optionalIntegerConfig = (name: string): Config.Config<number | undefined> 
     Config.option,
     Config.map((value) => Option.getOrUndefined(value)),
   );
-const optionalUrlConfig = (name: string): Config.Config<URL | undefined> =>
-  Config.url(name).pipe(
-    Config.option,
-    Config.map((value) => Option.getOrUndefined(value)),
-  );
-
 const OffsetConfig = Config.all({
   portOffset: optionalIntegerConfig("SAMSCODE_PORT_OFFSET"),
   devInstance: optionalStringConfig("SAMSCODE_DEV_INSTANCE"),
@@ -124,43 +116,36 @@ interface CreateDevRunnerEnvInput {
   readonly mode: DevMode;
   readonly baseEnv: NodeJS.ProcessEnv;
   readonly serverOffset: number;
-  readonly webOffset: number;
+  readonly rendererOffset: number;
   readonly samscodeHome: string | undefined;
   readonly authToken: string | undefined;
-  readonly noBrowser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
   readonly host: string | undefined;
   readonly port: number | undefined;
-  readonly devUrl: URL | undefined;
 }
 
 export function createDevRunnerEnv({
-  mode,
   baseEnv,
   serverOffset,
-  webOffset,
+  rendererOffset,
   samscodeHome,
   authToken,
-  noBrowser,
   autoBootstrapProjectFromCwd,
   logWebSocketEvents,
   host,
   port,
-  devUrl,
 }: CreateDevRunnerEnvInput): Effect.Effect<NodeJS.ProcessEnv, never, Path.Path> {
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
-    const webPort = BASE_WEB_PORT + webOffset;
+    const rendererPort = BASE_RENDERER_PORT + rendererOffset;
     const resolvedBaseDir = yield* resolveBaseDir(samscodeHome);
 
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
       SAMSCODE_PORT: String(serverPort),
-      PORT: String(webPort),
-      ELECTRON_RENDERER_PORT: String(webPort),
+      ELECTRON_RENDERER_PORT: String(rendererPort),
       VITE_WS_URL: `ws://localhost:${serverPort}`,
-      VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
       SAMSCODE_HOME: resolvedBaseDir,
     };
 
@@ -172,12 +157,6 @@ export function createDevRunnerEnv({
       output.SAMSCODE_AUTH_TOKEN = authToken;
     } else {
       delete output.SAMSCODE_AUTH_TOKEN;
-    }
-
-    if (noBrowser !== undefined) {
-      output.SAMSCODE_NO_BROWSER = noBrowser ? "1" : "0";
-    } else {
-      delete output.SAMSCODE_NO_BROWSER;
     }
 
     if (autoBootstrapProjectFromCwd !== undefined) {
@@ -192,27 +171,17 @@ export function createDevRunnerEnv({
       delete output.SAMSCODE_LOG_WS_EVENTS;
     }
 
-    if (mode === "dev") {
-      output.SAMSCODE_MODE = "web";
-      delete output.SAMSCODE_DESKTOP_WS_URL;
-    }
-
-    if (mode === "dev:server" || mode === "dev:web") {
-      output.SAMSCODE_MODE = "web";
-      delete output.SAMSCODE_DESKTOP_WS_URL;
-    }
-
     return output;
   });
 }
 
 function portPairForOffset(offset: number): {
   readonly serverPort: number;
-  readonly webPort: number;
+  readonly rendererPort: number;
 } {
   return {
     serverPort: BASE_SERVER_PORT + offset,
-    webPort: BASE_WEB_PORT + offset,
+    rendererPort: BASE_RENDERER_PORT + offset,
   };
 }
 
@@ -225,14 +194,14 @@ const defaultCheckPortAvailability: PortAvailabilityCheck<NetService> = (port) =
 interface FindFirstAvailableOffsetInput<R = NetService> {
   readonly startOffset: number;
   readonly requireServerPort: boolean;
-  readonly requireWebPort: boolean;
+  readonly requireRendererPort: boolean;
   readonly checkPortAvailability?: PortAvailabilityCheck<R>;
 }
 
 export function findFirstAvailableOffset<R = NetService>({
   startOffset,
   requireServerPort,
-  requireWebPort,
+  requireRendererPort,
   checkPortAvailability,
 }: FindFirstAvailableOffsetInput<R>): Effect.Effect<number, DevRunnerError, R> {
   return Effect.gen(function* () {
@@ -240,14 +209,16 @@ export function findFirstAvailableOffset<R = NetService>({
       defaultCheckPortAvailability) as PortAvailabilityCheck<R>;
 
     for (let candidate = startOffset; ; candidate += 1) {
-      const { serverPort, webPort } = portPairForOffset(candidate);
+      const { serverPort, rendererPort } = portPairForOffset(candidate);
       const serverPortOutOfRange = serverPort > MAX_PORT;
-      const webPortOutOfRange = webPort > MAX_PORT;
+      const rendererPortOutOfRange = rendererPort > MAX_PORT;
 
       if (
         (requireServerPort && serverPortOutOfRange) ||
-        (requireWebPort && webPortOutOfRange) ||
-        (!requireServerPort && !requireWebPort && (serverPortOutOfRange || webPortOutOfRange))
+        (requireRendererPort && rendererPortOutOfRange) ||
+        (!requireServerPort &&
+          !requireRendererPort &&
+          (serverPortOutOfRange || rendererPortOutOfRange))
       ) {
         break;
       }
@@ -256,8 +227,8 @@ export function findFirstAvailableOffset<R = NetService>({
       if (requireServerPort) {
         checks.push(checkPort(serverPort));
       }
-      if (requireWebPort) {
-        checks.push(checkPort(webPort));
+      if (requireRendererPort) {
+        checks.push(checkPort(rendererPort));
       }
 
       if (checks.length === 0) {
@@ -271,7 +242,7 @@ export function findFirstAvailableOffset<R = NetService>({
     }
 
     return yield* new DevRunnerError({
-      message: `No available dev ports found from offset ${startOffset}. Tried server=${BASE_SERVER_PORT}+n web=${BASE_WEB_PORT}+n up to port ${MAX_PORT}.`,
+      message: `No available dev ports found from offset ${startOffset}. Tried server=${BASE_SERVER_PORT}+n renderer=${BASE_RENDERER_PORT}+n up to port ${MAX_PORT}.`,
     });
   });
 }
@@ -280,7 +251,6 @@ interface ResolveModePortOffsetsInput<R = NetService> {
   readonly mode: DevMode;
   readonly startOffset: number;
   readonly hasExplicitServerPort: boolean;
-  readonly hasExplicitDevUrl: boolean;
   readonly checkPortAvailability?: PortAvailabilityCheck<R>;
 }
 
@@ -288,10 +258,9 @@ export function resolveModePortOffsets<R = NetService>({
   mode,
   startOffset,
   hasExplicitServerPort,
-  hasExplicitDevUrl,
   checkPortAvailability,
 }: ResolveModePortOffsetsInput<R>): Effect.Effect<
-  { readonly serverOffset: number; readonly webOffset: number },
+  { readonly serverOffset: number; readonly rendererOffset: number },
   DevRunnerError,
   R
 > {
@@ -299,42 +268,28 @@ export function resolveModePortOffsets<R = NetService>({
     const checkPort = (checkPortAvailability ??
       defaultCheckPortAvailability) as PortAvailabilityCheck<R>;
 
-    if (mode === "dev:web") {
-      if (hasExplicitDevUrl) {
-        return { serverOffset: startOffset, webOffset: startOffset };
-      }
-
-      const webOffset = yield* findFirstAvailableOffset({
-        startOffset,
-        requireServerPort: false,
-        requireWebPort: true,
-        checkPortAvailability: checkPort,
-      });
-      return { serverOffset: startOffset, webOffset };
-    }
-
     if (mode === "dev:server") {
       if (hasExplicitServerPort) {
-        return { serverOffset: startOffset, webOffset: startOffset };
+        return { serverOffset: startOffset, rendererOffset: startOffset };
       }
 
       const serverOffset = yield* findFirstAvailableOffset({
         startOffset,
         requireServerPort: true,
-        requireWebPort: false,
+        requireRendererPort: false,
         checkPortAvailability: checkPort,
       });
-      return { serverOffset, webOffset: serverOffset };
+      return { serverOffset, rendererOffset: serverOffset };
     }
 
     const sharedOffset = yield* findFirstAvailableOffset({
       startOffset,
       requireServerPort: !hasExplicitServerPort,
-      requireWebPort: !hasExplicitDevUrl,
+      requireRendererPort: true,
       checkPortAvailability: checkPort,
     });
 
-    return { serverOffset: sharedOffset, webOffset: sharedOffset };
+    return { serverOffset: sharedOffset, rendererOffset: sharedOffset };
   });
 }
 
@@ -342,12 +297,10 @@ interface DevRunnerCliInput {
   readonly mode: DevMode;
   readonly samscodeHome: string | undefined;
   readonly authToken: string | undefined;
-  readonly noBrowser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
   readonly host: string | undefined;
   readonly port: number | undefined;
-  readonly devUrl: URL | undefined;
   readonly dryRun: boolean;
   readonly turboArgs: ReadonlyArray<string>;
 }
@@ -403,28 +356,25 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
     });
 
     const envOverrides = {
-      noBrowser: readOptionalBooleanEnv("SAMSCODE_NO_BROWSER"),
       autoBootstrapProjectFromCwd: readOptionalBooleanEnv(
         "SAMSCODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD",
       ),
       logWebSocketEvents: readOptionalBooleanEnv("SAMSCODE_LOG_WS_EVENTS"),
     };
 
-    const { serverOffset, webOffset } = yield* resolveModePortOffsets({
+    const { serverOffset, rendererOffset } = yield* resolveModePortOffsets({
       mode: input.mode,
       startOffset: offset,
       hasExplicitServerPort: input.port !== undefined,
-      hasExplicitDevUrl: input.devUrl !== undefined,
     });
 
     const env = yield* createDevRunnerEnv({
       mode: input.mode,
       baseEnv: process.env,
       serverOffset,
-      webOffset,
+      rendererOffset,
       samscodeHome: input.samscodeHome,
       authToken: input.authToken,
-      noBrowser: resolveOptionalBooleanOverride(input.noBrowser, envOverrides.noBrowser),
       autoBootstrapProjectFromCwd: resolveOptionalBooleanOverride(
         input.autoBootstrapProjectFromCwd,
         envOverrides.autoBootstrapProjectFromCwd,
@@ -435,16 +385,15 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       ),
       host: input.host,
       port: input.port,
-      devUrl: input.devUrl,
     });
 
     const selectionSuffix =
-      serverOffset !== offset || webOffset !== offset
-        ? ` selectedOffset(server=${serverOffset},web=${webOffset})`
+      serverOffset !== offset || rendererOffset !== offset
+        ? ` selectedOffset(server=${serverOffset},renderer=${rendererOffset})`
         : "";
 
     yield* Effect.logInfo(
-      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.SAMSCODE_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.SAMSCODE_HOME)}`,
+      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.SAMSCODE_PORT)} rendererPort=${String(env.ELECTRON_RENDERER_PORT)} baseDir=${String(env.SAMSCODE_HOME)}`,
     );
 
     if (input.dryRun) {
@@ -501,10 +450,6 @@ const devRunnerCli = Command.make("dev-runner", {
     Flag.withAlias("token"),
     Flag.withFallbackConfig(optionalStringConfig("SAMSCODE_AUTH_TOKEN")),
   ),
-  noBrowser: Flag.boolean("no-browser").pipe(
-    Flag.withDescription("Browser auto-open toggle (equivalent to SAMSCODE_NO_BROWSER)."),
-    Flag.withFallbackConfig(optionalBooleanConfig("SAMSCODE_NO_BROWSER")),
-  ),
   autoBootstrapProjectFromCwd: Flag.boolean("auto-bootstrap-project-from-cwd").pipe(
     Flag.withDescription(
       "Auto-bootstrap toggle (equivalent to SAMSCODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD).",
@@ -524,11 +469,6 @@ const devRunnerCli = Command.make("dev-runner", {
     Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
     Flag.withDescription("Server port override (forwards to SAMSCODE_PORT)."),
     Flag.withFallbackConfig(optionalPortConfig("SAMSCODE_PORT")),
-  ),
-  devUrl: Flag.string("dev-url").pipe(
-    Flag.withSchema(Schema.URLFromString),
-    Flag.withDescription("Web dev URL override (forwards to VITE_DEV_SERVER_URL)."),
-    Flag.withFallbackConfig(optionalUrlConfig("VITE_DEV_SERVER_URL")),
   ),
   dryRun: Flag.boolean("dry-run").pipe(
     Flag.withDescription("Resolve mode/ports/env and print, but do not spawn turbo."),

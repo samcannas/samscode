@@ -365,11 +365,11 @@ function stageWindowsIcons(stageResourcesDir: string) {
   });
 }
 
-function validateBundledClientAssets(clientDir: string) {
+function validateBundledRendererAssets(rendererDir: string) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const indexPath = path.join(clientDir, "index.html");
+    const indexPath = path.join(rendererDir, "index.html");
     const indexHtml = yield* fs.readFileString(indexPath);
     const refs = [...indexHtml.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)]
       .map((match) => match[1])
@@ -386,7 +386,7 @@ function validateBundledClientAssets(clientDir: string) {
       if (!ext) continue;
 
       const relativePath = normalizedRef.replace(/^\/+/, "");
-      const assetPath = path.join(clientDir, relativePath);
+      const assetPath = path.join(rendererDir, relativePath);
       if (!(yield* fs.exists(assetPath))) {
         missing.push(normalizedRef);
       }
@@ -396,7 +396,7 @@ function validateBundledClientAssets(clientDir: string) {
       const preview = missing.slice(0, 6).join(", ");
       const suffix = missing.length > 6 ? ` (+${missing.length - 6} more)` : "";
       return yield* new BuildScriptError({
-        message: `Bundled client references missing files in ${indexPath}: ${preview}${suffix}. Rebuild web/server artifacts.`,
+        message: `Bundled desktop renderer references missing files in ${indexPath}: ${preview}${suffix}. Rebuild desktop renderer artifacts.`,
       });
     }
   });
@@ -572,12 +572,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const distDirs = {
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
     desktopResources: path.join(repoRoot, "apps/desktop/resources"),
+    desktopRendererDist: path.join(repoRoot, "apps/desktop-renderer/dist"),
     serverDist: path.join(repoRoot, "apps/server/dist"),
   };
-  const bundledClientEntry = path.join(distDirs.serverDist, "client/index.html");
+  const bundledRendererEntry = path.join(distDirs.desktopRendererDist, "index.html");
 
   if (!options.skipBuild) {
-    yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
+    yield* Effect.log("[desktop-artifact] Building desktop renderer/server artifacts...");
     yield* runCommand(
       ChildProcess.make({
         cwd: repoRoot,
@@ -596,20 +597,25 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     }
   }
 
-  if (!(yield* fs.exists(bundledClientEntry))) {
+  if (!(yield* fs.exists(bundledRendererEntry))) {
     return yield* new BuildScriptError({
-      message: `Missing bundled server client at ${bundledClientEntry}. Run 'bun run build:desktop' first.`,
+      message: `Missing bundled desktop renderer at ${bundledRendererEntry}. Run 'bun run build:desktop' first.`,
     });
   }
 
-  yield* validateBundledClientAssets(path.dirname(bundledClientEntry));
+  yield* validateBundledRendererAssets(path.dirname(bundledRendererEntry));
 
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop"), { recursive: true });
+  yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop-renderer"), { recursive: true });
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/server"), { recursive: true });
 
   yield* Effect.log("[desktop-artifact] Staging release app...");
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
+  yield* fs.copy(
+    distDirs.desktopRendererDist,
+    path.join(stageAppDir, "apps/desktop-renderer/dist"),
+  );
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
 
   yield* assertPlatformBuildResources(options.platform, stageResourcesDir, options.verbose);

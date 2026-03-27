@@ -56,7 +56,7 @@ Checklist:
 3. Ensure npm account and org policies allow trusted publishing for the package.
 4. Create release tag `vX.Y.Z` and push; workflow will:
    - set `apps/server/package.json` version to `X.Y.Z`
-   - build web + server
+   - build the desktop renderer + server
    - run `bun publish --access public`
 
 ## 1) Dry-run release without signing

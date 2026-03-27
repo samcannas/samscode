@@ -15,10 +15,10 @@ const VSIX_URL = `https://open-vsx.org/api/vscode-icons-team/vscode-icons/${VERS
 const LANGUAGES_URL = `https://raw.githubusercontent.com/vscode-icons/vscode-icons/${VERSION_TAG}/src/iconsManifest/languages.ts`;
 
 const REPO_ROOT = process.cwd();
-const MANIFEST_PATH = path.join(REPO_ROOT, "apps/web/src/vscode-icons-manifest.json");
+const MANIFEST_PATH = path.join(REPO_ROOT, "apps/desktop-renderer/src/vscode-icons-manifest.json");
 const ASSOCIATIONS_PATH = path.join(
   REPO_ROOT,
-  "apps/web/src/vscode-icons-language-associations.json",
+  "apps/desktop-renderer/src/vscode-icons-language-associations.json",
 );
 
 function normalizeExtension(value) {

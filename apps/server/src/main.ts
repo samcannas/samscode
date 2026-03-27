@@ -6,19 +6,17 @@
  *
  * @module CliConfig
  */
-import { Config, Data, Effect, FileSystem, Layer, Option, Path, Schema, ServiceMap } from "effect";
+import { Config, Data, Effect, Layer, Option, Schema, ServiceMap } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { NetService } from "@samscode/shared/Net";
 import {
   DEFAULT_PORT,
   deriveServerPaths,
-  resolveStaticDir,
   ServerConfig,
   type RuntimeMode,
   type ServerConfigShape,
 } from "./config";
 import { fixPath, resolveBaseDir } from "./os-jank";
-import { Open } from "./open";
 import * as SqlitePersistence from "./persistence/Layers/Sqlite";
 import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
 import { ProviderHealthLive } from "./provider/Layers/ProviderHealth";
@@ -35,8 +33,6 @@ interface CliInput {
   readonly port: Option.Option<number>;
   readonly host: Option.Option<string>;
   readonly samscodeHome: Option.Option<string>;
-  readonly devUrl: Option.Option<URL>;
-  readonly noBrowser: Option.Option<boolean>;
   readonly authToken: Option.Option<string>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
   readonly logWebSocketEvents: Option.Option<boolean>;
@@ -55,11 +51,6 @@ export interface CliConfigShape {
    * Apply OS-specific PATH normalization.
    */
   readonly fixPath: Effect.Effect<void>;
-
-  /**
-   * Resolve static web asset directory for server mode.
-   */
-  readonly resolveStaticDir: Effect.Effect<string | undefined>;
 }
 
 /**
@@ -70,18 +61,10 @@ export class CliConfig extends ServiceMap.Service<CliConfig, CliConfigShape>()(
 ) {
   static readonly layer = Layer.effect(
     CliConfig,
-    Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      return {
-        cwd: process.cwd(),
-        fixPath: Effect.sync(fixPath),
-        resolveStaticDir: resolveStaticDir().pipe(
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-        ),
-      } satisfies CliConfigShape;
-    }),
+    Effect.succeed({
+      cwd: process.cwd(),
+      fixPath: Effect.sync(fixPath),
+    } satisfies CliConfigShape),
   );
 }
 
@@ -90,8 +73,8 @@ const CliEnvConfig = Config.all({
     Config.option,
     Config.map(
       Option.match<RuntimeMode, string>({
-        onNone: () => "web",
-        onSome: (value) => (value === "desktop" ? "desktop" : "web"),
+        onNone: () => "headless",
+        onSome: (value) => (value === "desktop" ? "desktop" : "headless"),
       }),
     ),
   ),
@@ -101,8 +84,7 @@ const CliEnvConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  noBrowser: Config.boolean("SAMSCODE_NO_BROWSER").pipe(
+  desktopRendererUrl: Config.url("SAMSCODE_DESKTOP_RENDERER_URL").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -151,22 +133,20 @@ const ServerConfigLive = (input: CliInput) =>
         },
       });
 
-      const devUrl = Option.getOrElse(input.devUrl, () => env.devUrl);
+      const desktopRendererUrl = env.desktopRendererUrl;
       const baseDir = yield* resolveBaseDir(
         Option.getOrUndefined(input.samscodeHome) ?? env.samscodeHome,
       );
-      const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
-      const noBrowser = resolveBooleanFlag(input.noBrowser, env.noBrowser ?? mode === "desktop");
+      const derivedPaths = yield* deriveServerPaths(baseDir, desktopRendererUrl);
       const authToken = Option.getOrUndefined(input.authToken) ?? env.authToken;
       const autoBootstrapProjectFromCwd = resolveBooleanFlag(
         input.autoBootstrapProjectFromCwd,
-        env.autoBootstrapProjectFromCwd ?? mode === "web",
+        env.autoBootstrapProjectFromCwd ?? mode === "headless",
       );
       const logWebSocketEvents = resolveBooleanFlag(
         input.logWebSocketEvents,
-        env.logWebSocketEvents ?? Boolean(devUrl),
+        env.logWebSocketEvents ?? Boolean(desktopRendererUrl),
       );
-      const staticDir = devUrl ? undefined : yield* cliConfig.resolveStaticDir;
       const host =
         Option.getOrUndefined(input.host) ??
         env.host ??
@@ -179,9 +159,7 @@ const ServerConfigLive = (input: CliInput) =>
         host,
         baseDir,
         ...derivedPaths,
-        staticDir,
-        devUrl,
-        noBrowser,
+        desktopRendererUrl,
         authToken,
         autoBootstrapProjectFromCwd,
         logWebSocketEvents,
@@ -211,19 +189,9 @@ const makeServerProgram = (input: CliInput) =>
   Effect.gen(function* () {
     const cliConfig = yield* CliConfig;
     const { start, stopSignal } = yield* Server;
-    const openDeps = yield* Open;
     yield* cliConfig.fixPath;
 
     const config = yield* ServerConfig;
-
-    if (!config.devUrl && !config.staticDir) {
-      yield* Effect.logWarning(
-        "web bundle missing and no VITE_DEV_SERVER_URL; web UI unavailable",
-        {
-          hint: "Run `bun run --cwd apps/web build` or set VITE_DEV_SERVER_URL for dev mode.",
-        },
-      );
-    }
 
     yield* start;
 
@@ -232,23 +200,13 @@ const makeServerProgram = (input: CliInput) =>
       config.host && !isWildcardHost(config.host)
         ? `http://${formatHostForUrl(config.host)}:${config.port}`
         : localUrl;
-    const { authToken, devUrl, ...safeConfig } = config;
+    const { authToken, desktopRendererUrl, ...safeConfig } = config;
     yield* Effect.logInfo("Sam's Code running", {
       ...safeConfig,
-      devUrl: devUrl?.toString(),
+      desktopRendererUrl: desktopRendererUrl?.toString(),
+      bindUrl,
       authEnabled: Boolean(authToken),
     });
-
-    if (!config.noBrowser) {
-      const target = config.devUrl?.toString() ?? bindUrl;
-      yield* openDeps.openBrowser(target).pipe(
-        Effect.catch(() =>
-          Effect.logInfo("browser auto-open unavailable", {
-            hint: `Open ${target} in your browser.`,
-          }),
-        ),
-      );
-    }
 
     return yield* stopSignal;
   }).pipe(Effect.provide(LayerLive(input)));
@@ -257,7 +215,7 @@ const makeServerProgram = (input: CliInput) =>
  * These flags mirrors the environment variables and the config shape.
  */
 
-const modeFlag = Flag.choice("mode", ["web", "desktop"]).pipe(
+const modeFlag = Flag.choice("mode", ["headless", "desktop"]).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
   Flag.optional,
 );
@@ -272,15 +230,6 @@ const hostFlag = Flag.string("host").pipe(
 );
 const samscodeHomeFlag = Flag.string("home-dir").pipe(
   Flag.withDescription("Base directory for all Sam's Code data (equivalent to SAMSCODE_HOME)."),
-  Flag.optional,
-);
-const devUrlFlag = Flag.string("dev-url").pipe(
-  Flag.withSchema(Schema.URLFromString),
-  Flag.withDescription("Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL)."),
-  Flag.optional,
-);
-const noBrowserFlag = Flag.boolean("no-browser").pipe(
-  Flag.withDescription("Disable automatic browser opening."),
   Flag.optional,
 );
 const authTokenFlag = Flag.string("auth-token").pipe(
@@ -307,8 +256,6 @@ export const scCli = Command.make("sc", {
   port: portFlag,
   host: hostFlag,
   samscodeHome: samscodeHomeFlag,
-  devUrl: devUrlFlag,
-  noBrowser: noBrowserFlag,
   authToken: authTokenFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,

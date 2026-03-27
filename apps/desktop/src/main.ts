@@ -61,7 +61,7 @@ const BASE_DIR = process.env.SAMSCODE_HOME?.trim() || Path.join(OS.homedir(), ".
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "sc";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
-const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+const isDevelopment = Boolean(process.env.SAMSCODE_DESKTOP_RENDERER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "Sam's Code (Dev)" : "Sam's Code (Alpha)";
 const APP_USER_MODEL_ID = "com.samstack.samscode";
 const USER_DATA_DIR_NAME = isDevelopment ? "samscode-dev" : "samscode";
@@ -390,10 +390,7 @@ function resolveBackendCwd(): string {
 
 function resolveDesktopStaticDir(): string | null {
   const appRoot = resolveAppRoot();
-  const candidates = [
-    Path.join(appRoot, "apps/server/dist/client"),
-    Path.join(appRoot, "apps/web/dist"),
-  ];
+  const candidates = [Path.join(appRoot, "apps/desktop-renderer/dist")];
 
   for (const candidate of candidates) {
     if (FS.existsSync(Path.join(candidate, "index.html"))) {
@@ -456,9 +453,7 @@ function registerDesktopProtocol(): void {
 
   const staticRoot = resolveDesktopStaticDir();
   if (!staticRoot) {
-    throw new Error(
-      "Desktop static bundle missing. Build apps/server (with bundled client) first.",
-    );
+    throw new Error("Desktop renderer bundle missing. Build apps/desktop-renderer first.");
   }
 
   const staticRootResolved = Path.resolve(staticRoot);
@@ -919,7 +914,6 @@ function backendEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
     SAMSCODE_MODE: "desktop",
-    SAMSCODE_NO_BROWSER: "1",
     SAMSCODE_PORT: String(backendPort),
     SAMSCODE_HOME: BASE_DIR,
     SAMSCODE_AUTH_TOKEN: backendAuthToken,
@@ -1379,7 +1373,7 @@ function createWindow(): BrowserWindow {
   });
 
   if (isDevelopment) {
-    void window.loadURL(process.env.VITE_DEV_SERVER_URL as string);
+    void window.loadURL(process.env.SAMSCODE_DESKTOP_RENDERER_URL as string);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
     void window.loadURL(`${DESKTOP_SCHEME}://app/index.html`);

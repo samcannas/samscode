@@ -28,7 +28,6 @@
     "@pierre/diffs": "^1.1.0-beta.16",
     "effect": "catalog:",
     "node-pty": "^1.1.0",
-    "open": "^10.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -36,7 +35,6 @@
     "@effect/vitest": "catalog:",
     "@samscode/contracts": "workspace:*",
     "@samscode/shared": "workspace:*",
-    "@samscode/web": "workspace:*",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/ws": "^8.5.13",

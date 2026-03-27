@@ -1,8 +1,7 @@
 /**
- * Open - Browser/editor launch service interface.
+ * Open - Editor launch service interface.
  *
- * Owns process launch helpers for opening URLs in a browser and workspace
- * paths in a configured editor.
+ * Owns process launch helpers for opening workspace paths in a configured editor.
  *
  * @module Open
  */
@@ -178,14 +177,9 @@ export function resolveAvailableEditors(
 }
 
 /**
- * OpenShape - Service API for browser and editor launch actions.
+ * OpenShape - Service API for editor launch actions.
  */
 export interface OpenShape {
-  /**
-   * Open a URL target in the default browser.
-   */
-  readonly openBrowser: (target: string) => Effect.Effect<void, OpenError>;
-
   /**
    * Open a workspace path in a selected editor integration.
    *
@@ -257,20 +251,9 @@ export const launchDetached = (launch: EditorLaunch) =>
     });
   });
 
-const make = Effect.gen(function* () {
-  const open = yield* Effect.tryPromise({
-    try: () => import("open"),
-    catch: (cause) => new OpenError({ message: "failed to load browser opener", cause }),
-  });
-
-  return {
-    openBrowser: (target) =>
-      Effect.tryPromise({
-        try: () => open.default(target),
-        catch: (cause) => new OpenError({ message: "Browser auto-open failed", cause }),
-      }),
-    openInEditor: (input) => Effect.flatMap(resolveEditorLaunch(input), launchDetached),
-  } satisfies OpenShape;
-});
+const make = Effect.succeed({
+  openInEditor: (input: OpenInEditorInput) =>
+    Effect.flatMap(resolveEditorLaunch(input), launchDetached),
+} satisfies OpenShape);
 
 export const OpenLive = Layer.effect(Open, make);

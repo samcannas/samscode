@@ -622,7 +622,7 @@ describe("TerminalManager", () => {
 
     setEnv("PORT", "5173");
     setEnv("SAMSCODE_PORT", "3773");
-    setEnv("VITE_DEV_SERVER_URL", "http://localhost:5173");
+    setEnv("SAMSCODE_DESKTOP_RENDERER_URL", "http://localhost:5733");
     setEnv("TEST_TERMINAL_KEEP", "keep-me");
 
     try {
@@ -634,7 +634,7 @@ describe("TerminalManager", () => {
 
       expect(spawnInput.env.PORT).toBeUndefined();
       expect(spawnInput.env.SAMSCODE_PORT).toBeUndefined();
-      expect(spawnInput.env.VITE_DEV_SERVER_URL).toBeUndefined();
+      expect(spawnInput.env.SAMSCODE_DESKTOP_RENDERER_URL).toBeUndefined();
       expect(spawnInput.env.TEST_TERMINAL_KEEP).toBe("keep-me");
 
       manager.dispose();

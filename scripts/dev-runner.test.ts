@@ -52,15 +52,13 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev",
           baseEnv: {},
           serverOffset: 0,
-          webOffset: 0,
+          rendererOffset: 0,
           samscodeHome: undefined,
           authToken: undefined,
-          noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
           port: undefined,
-          devUrl: undefined,
         });
 
         assert.equal(env.SAMSCODE_HOME, resolve(homedir(), ".samscode"));
@@ -73,25 +71,22 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev:server",
           baseEnv: {},
           serverOffset: 0,
-          webOffset: 0,
+          rendererOffset: 0,
           samscodeHome: "/tmp/custom-samscode",
           authToken: "secret",
-          noBrowser: true,
           autoBootstrapProjectFromCwd: false,
           logWebSocketEvents: true,
           host: "0.0.0.0",
           port: 4222,
-          devUrl: new URL("http://localhost:7331"),
         });
 
         assert.equal(env.SAMSCODE_HOME, resolve("/tmp/custom-samscode"));
         assert.equal(env.SAMSCODE_PORT, "4222");
         assert.equal(env.VITE_WS_URL, "ws://localhost:4222");
-        assert.equal(env.SAMSCODE_NO_BROWSER, "1");
+        assert.equal(env.ELECTRON_RENDERER_PORT, "5733");
         assert.equal(env.SAMSCODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD, "0");
         assert.equal(env.SAMSCODE_LOG_WS_EVENTS, "1");
         assert.equal(env.SAMSCODE_HOST, "0.0.0.0");
-        assert.equal(env.VITE_DEV_SERVER_URL, "http://localhost:7331/");
       }),
     );
 
@@ -103,18 +98,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
             SAMSCODE_LOG_WS_EVENTS: "keep-me-out",
           },
           serverOffset: 0,
-          webOffset: 0,
+          rendererOffset: 0,
           samscodeHome: undefined,
           authToken: undefined,
-          noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
           port: undefined,
-          devUrl: undefined,
         });
 
-        assert.equal(env.SAMSCODE_MODE, "web");
         assert.equal(env.SAMSCODE_LOG_WS_EVENTS, undefined);
       }),
     );
@@ -125,15 +117,13 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev",
           baseEnv: {},
           serverOffset: 0,
-          webOffset: 0,
+          rendererOffset: 0,
           samscodeHome: undefined,
           authToken: undefined,
-          noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: false,
           host: undefined,
           port: undefined,
-          devUrl: undefined,
         });
 
         assert.equal(env.SAMSCODE_LOG_WS_EVENTS, "0");
@@ -146,15 +136,13 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev",
           baseEnv: {},
           serverOffset: 0,
-          webOffset: 0,
+          rendererOffset: 0,
           samscodeHome: "/tmp/my-samscode",
           authToken: undefined,
-          noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
           port: undefined,
-          devUrl: undefined,
         });
 
         assert.equal(env.SAMSCODE_HOME, resolve("/tmp/my-samscode"));
@@ -168,7 +156,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         const offset = yield* findFirstAvailableOffset({
           startOffset: 0,
           requireServerPort: true,
-          requireWebPort: true,
+          requireRendererPort: true,
           checkPortAvailability: () => Effect.succeed(true),
         });
 
@@ -182,7 +170,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         const offset = yield* findFirstAvailableOffset({
           startOffset: 0,
           requireServerPort: true,
-          requireWebPort: true,
+          requireRendererPort: true,
           checkPortAvailability: (port) => Effect.succeed(!taken.has(port)),
         });
 
@@ -195,7 +183,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         const offset = yield* findFirstAvailableOffset({
           startOffset: 59_803,
           requireServerPort: true,
-          requireWebPort: false,
+          requireRendererPort: false,
           checkPortAvailability: () => Effect.succeed(true),
         });
 
@@ -212,26 +200,10 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev",
           startOffset: 0,
           hasExplicitServerPort: false,
-          hasExplicitDevUrl: false,
           checkPortAvailability: (port) => Effect.succeed(!taken.has(port)),
         });
 
-        assert.deepStrictEqual(offsets, { serverOffset: 1, webOffset: 1 });
-      }),
-    );
-
-    it.effect("keeps server offset stable for dev:web and only shifts web offset", () =>
-      Effect.gen(function* () {
-        const taken = new Set([5733]);
-        const offsets = yield* resolveModePortOffsets({
-          mode: "dev:web",
-          startOffset: 0,
-          hasExplicitServerPort: false,
-          hasExplicitDevUrl: false,
-          checkPortAvailability: (port) => Effect.succeed(!taken.has(port)),
-        });
-
-        assert.deepStrictEqual(offsets, { serverOffset: 0, webOffset: 1 });
+        assert.deepStrictEqual(offsets, { serverOffset: 1, rendererOffset: 1 });
       }),
     );
 
@@ -242,25 +214,10 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev:server",
           startOffset: 0,
           hasExplicitServerPort: false,
-          hasExplicitDevUrl: false,
           checkPortAvailability: (port) => Effect.succeed(!taken.has(port)),
         });
 
-        assert.deepStrictEqual(offsets, { serverOffset: 1, webOffset: 1 });
-      }),
-    );
-
-    it.effect("respects explicit dev-url override for dev:web", () =>
-      Effect.gen(function* () {
-        const offsets = yield* resolveModePortOffsets({
-          mode: "dev:web",
-          startOffset: 0,
-          hasExplicitServerPort: false,
-          hasExplicitDevUrl: true,
-          checkPortAvailability: () => Effect.succeed(false),
-        });
-
-        assert.deepStrictEqual(offsets, { serverOffset: 0, webOffset: 0 });
+        assert.deepStrictEqual(offsets, { serverOffset: 1, rendererOffset: 1 });
       }),
     );
 
@@ -270,11 +227,10 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           mode: "dev:server",
           startOffset: 0,
           hasExplicitServerPort: true,
-          hasExplicitDevUrl: false,
           checkPortAvailability: () => Effect.succeed(false),
         });
 
-        assert.deepStrictEqual(offsets, { serverOffset: 0, webOffset: 0 });
+        assert.deepStrictEqual(offsets, { serverOffset: 0, rendererOffset: 0 });
       }),
     );
   });

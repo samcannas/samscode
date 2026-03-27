@@ -1,6 +1,6 @@
 # Sam's Code
 
-Sam's Code is a desktop and web GUI for coding agents, with first-class support for Codex and Claude.
+Sam's Code is a desktop app for coding agents, with first-class support for Codex and Claude.
 
 ## Quick Start
 
@@ -10,8 +10,8 @@ Sam's Code is a desktop and web GUI for coding agents, with first-class support 
 ## Development
 
 - `bun install`
-- `bun run dev` for the web/server workflow
-- `bun run dev:desktop` for the desktop workflow
+- `bun run dev` for the desktop workflow
+- `bun run start` to launch the built desktop app
 
 ## Notes
 

@@ -62,7 +62,7 @@ function startApp() {
       cwd: desktopDir,
       env: {
         ...childEnv,
-        VITE_DEV_SERVER_URL: devServerUrl,
+        SAMSCODE_DESKTOP_RENDERER_URL: devServerUrl,
       },
       stdio: "inherit",
     },

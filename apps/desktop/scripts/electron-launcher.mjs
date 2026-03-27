@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+const isDevelopment = Boolean(process.env.SAMSCODE_DESKTOP_RENDERER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "Sam's Code (Dev)" : "Sam's Code (Alpha)";
 const APP_BUNDLE_ID = "com.samstack.samscode";
 const LAUNCHER_VERSION = 1;

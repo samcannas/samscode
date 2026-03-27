@@ -11,12 +11,12 @@
       "persistent": true,
     },
     "start": {
-      "dependsOn": ["build", "@samscode/web#build", "samscode#build"],
+      "dependsOn": ["build", "@samscode/desktop-renderer#build", "samscode#build"],
       "cache": false,
       "persistent": true,
     },
     "smoke-test": {
-      "dependsOn": ["build", "@samscode/web#build", "samscode#build"],
+      "dependsOn": ["build", "@samscode/desktop-renderer#build", "samscode#build"],
       "cache": false,
       "outputs": [],
     },
