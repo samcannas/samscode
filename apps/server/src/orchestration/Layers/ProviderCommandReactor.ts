@@ -330,6 +330,7 @@ const make = Effect.gen(function* () {
   const sendTurnForThread = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly messageText: string;
+    readonly providerInputText?: string;
     readonly attachments?: ReadonlyArray<ChatAttachment>;
     readonly provider?: ProviderKind;
     readonly model?: string;
@@ -354,7 +355,7 @@ const make = Effect.gen(function* () {
     if (input.modelOptions !== undefined) {
       threadModelOptions.set(input.threadId, input.modelOptions);
     }
-    const normalizedInput = toNonEmptyProviderInput(input.messageText);
+    const normalizedInput = toNonEmptyProviderInput(input.providerInputText ?? input.messageText);
     const normalizedAttachments = input.attachments ?? [];
     const activeSession = yield* providerService
       .listSessions()
@@ -484,6 +485,9 @@ const make = Effect.gen(function* () {
     yield* sendTurnForThread({
       threadId: event.payload.threadId,
       messageText: message.text,
+      ...(event.payload.providerInputText !== undefined
+        ? { providerInputText: event.payload.providerInputText }
+        : {}),
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
       ...(event.payload.provider !== undefined ? { provider: event.payload.provider } : {}),
       ...(event.payload.model !== undefined ? { model: event.payload.model } : {}),

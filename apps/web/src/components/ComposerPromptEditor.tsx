@@ -59,12 +59,12 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
 } from "~/composer-logic";
 import { splitPromptIntoComposerSegments } from "~/composer-editor-mentions";
+import type { ComposerAgentDefinition } from "~/agentMentions";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
-import { basenameOfPath, getVscodeIconUrlForEntry, inferEntryKindFromPath } from "~/vscode-icons";
 import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
@@ -76,7 +76,8 @@ const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).sl
 
 type SerializedComposerMentionNode = Spread<
   {
-    path: string;
+    agentId: string;
+    label: string;
     type: "composer-mention";
     version: 1;
   },
@@ -99,30 +100,33 @@ const ComposerTerminalContextActionsContext = createContext<{
 });
 
 class ComposerMentionNode extends TextNode {
-  __path: string;
+  __agentId: string;
+  __label: string;
 
   static override getType(): string {
     return "composer-mention";
   }
 
   static override clone(node: ComposerMentionNode): ComposerMentionNode {
-    return new ComposerMentionNode(node.__path, node.__key);
+    return new ComposerMentionNode(node.__agentId, node.__label, node.__key);
   }
 
   static override importJSON(serializedNode: SerializedComposerMentionNode): ComposerMentionNode {
-    return $createComposerMentionNode(serializedNode.path);
+    return $createComposerMentionNode(serializedNode.agentId, serializedNode.label);
   }
 
-  constructor(path: string, key?: NodeKey) {
-    const normalizedPath = path.startsWith("@") ? path.slice(1) : path;
-    super(`@${normalizedPath}`, key);
-    this.__path = normalizedPath;
+  constructor(agentId: string, label: string, key?: NodeKey) {
+    const normalizedAgentId = agentId.startsWith("@") ? agentId.slice(1) : agentId;
+    super(`@${normalizedAgentId}`, key);
+    this.__agentId = normalizedAgentId;
+    this.__label = label.trim().length > 0 ? label : normalizedAgentId;
   }
 
   override exportJSON(): SerializedComposerMentionNode {
     return {
       ...super.exportJSON(),
-      path: this.__path,
+      agentId: this.__agentId,
+      label: this.__label,
       type: "composer-mention",
       version: 1,
     };
@@ -133,7 +137,7 @@ class ComposerMentionNode extends TextNode {
     dom.className = COMPOSER_INLINE_CHIP_CLASS_NAME;
     dom.contentEditable = "false";
     dom.setAttribute("spellcheck", "false");
-    renderMentionChipDom(dom, this.__path);
+    renderMentionChipDom(dom, this.__label);
     return dom;
   }
 
@@ -143,8 +147,8 @@ class ComposerMentionNode extends TextNode {
     _config: EditorConfig,
   ): boolean {
     dom.contentEditable = "false";
-    if (prevNode.__text !== this.__text || prevNode.__path !== this.__path) {
-      renderMentionChipDom(dom, this.__path);
+    if (prevNode.__text !== this.__text || prevNode.__label !== this.__label) {
+      renderMentionChipDom(dom, this.__label);
     }
     return false;
   }
@@ -166,8 +170,8 @@ class ComposerMentionNode extends TextNode {
   }
 }
 
-function $createComposerMentionNode(path: string): ComposerMentionNode {
-  return $applyNodeReplacement(new ComposerMentionNode(path));
+function $createComposerMentionNode(agentId: string, label: string): ComposerMentionNode {
+  return $applyNodeReplacement(new ComposerMentionNode(agentId, label));
 }
 
 function ComposerTerminalContextDecorator(props: { context: TerminalContextDraft }) {
@@ -242,26 +246,19 @@ function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInl
   );
 }
 
-function resolvedThemeFromDocument(): "light" | "dark" {
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
-}
-
-function renderMentionChipDom(container: HTMLElement, pathValue: string): void {
+function renderMentionChipDom(container: HTMLElement, labelValue: string): void {
   container.textContent = "";
   container.style.setProperty("user-select", "none");
   container.style.setProperty("-webkit-user-select", "none");
 
-  const theme = resolvedThemeFromDocument();
-  const icon = document.createElement("img");
-  icon.alt = "";
+  const icon = document.createElement("span");
   icon.ariaHidden = "true";
   icon.className = COMPOSER_INLINE_CHIP_ICON_CLASS_NAME;
-  icon.loading = "lazy";
-  icon.src = getVscodeIconUrlForEntry(pathValue, inferEntryKindFromPath(pathValue), theme);
+  icon.textContent = "@";
 
   const label = document.createElement("span");
   label.className = COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME;
-  label.textContent = basenameOfPath(pathValue);
+  label.textContent = labelValue;
 
   container.append(icon, label);
 }
@@ -280,6 +277,12 @@ function terminalContextSignature(contexts: ReadonlyArray<TerminalContextDraft>)
         context.text,
       ].join("\u001f"),
     )
+    .join("\u001e");
+}
+
+function agentMentionSignature(agentMentions: ReadonlyArray<ComposerAgentDefinition>): string {
+  return agentMentions
+    .map((agent) => [agent.id, agent.name, agent.description].join("\u001f"))
     .join("\u001e");
 }
 
@@ -591,16 +594,27 @@ function $appendTextWithLineBreaks(parent: ElementNode, text: string): void {
 function $setComposerEditorPrompt(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
+  agentMentions: ReadonlyArray<ComposerAgentDefinition>,
 ): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
+  const mentionLabelById = new Map(agentMentions.map((agent) => [agent.id, agent.name]));
 
-  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts);
+  const segments = splitPromptIntoComposerSegments(
+    prompt,
+    terminalContexts,
+    agentMentions.map((agent) => agent.id),
+  );
   for (const segment of segments) {
     if (segment.type === "mention") {
-      paragraph.append($createComposerMentionNode(segment.path));
+      paragraph.append(
+        $createComposerMentionNode(
+          segment.agentId,
+          mentionLabelById.get(segment.agentId) ?? segment.agentId,
+        ),
+      );
       continue;
     }
     if (segment.type === "terminal-context") {
@@ -638,6 +652,7 @@ export interface ComposerPromptEditorHandle {
 interface ComposerPromptEditorProps {
   value: string;
   cursor: number;
+  agentMentions: ReadonlyArray<ComposerAgentDefinition>;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   disabled: boolean;
   placeholder: string;
@@ -717,7 +732,7 @@ function ComposerCommandKeyPlugin(props: {
   return null;
 }
 
-function ComposerInlineTokenArrowPlugin() {
+function ComposerInlineTokenArrowPlugin(props: { mentionAgentIds: ReadonlyArray<string> }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
@@ -731,7 +746,14 @@ function ComposerInlineTokenArrowPlugin() {
           const currentOffset = $readSelectionOffsetFromEditorState(0);
           if (currentOffset <= 0) return;
           const promptValue = $getRoot().getTextContent();
-          if (!isCollapsedCursorAdjacentToInlineToken(promptValue, currentOffset, "left")) {
+          if (
+            !isCollapsedCursorAdjacentToInlineToken(
+              promptValue,
+              currentOffset,
+              "left",
+              props.mentionAgentIds,
+            )
+          ) {
             return;
           }
           nextOffset = currentOffset - 1;
@@ -758,7 +780,14 @@ function ComposerInlineTokenArrowPlugin() {
           const composerLength = $getComposerRootLength();
           if (currentOffset >= composerLength) return;
           const promptValue = $getRoot().getTextContent();
-          if (!isCollapsedCursorAdjacentToInlineToken(promptValue, currentOffset, "right")) {
+          if (
+            !isCollapsedCursorAdjacentToInlineToken(
+              promptValue,
+              currentOffset,
+              "right",
+              props.mentionAgentIds,
+            )
+          ) {
             return;
           }
           nextOffset = currentOffset + 1;
@@ -778,7 +807,7 @@ function ComposerInlineTokenArrowPlugin() {
       unregisterLeft();
       unregisterRight();
     };
-  }, [editor]);
+  }, [editor, props.mentionAgentIds]);
 
   return null;
 }
@@ -881,6 +910,7 @@ function ComposerInlineTokenBackspacePlugin() {
 function ComposerPromptEditorInner({
   value,
   cursor,
+  agentMentions,
   terminalContexts,
   disabled,
   placeholder,
@@ -893,13 +923,16 @@ function ComposerPromptEditorInner({
 }: ComposerPromptEditorInnerProps) {
   const [editor] = useLexicalComposerContext();
   const onChangeRef = useRef(onChange);
-  const initialCursor = clampCollapsedComposerCursor(value, cursor);
+  const mentionAgentIds = useMemo(() => agentMentions.map((agent) => agent.id), [agentMentions]);
+  const initialCursor = clampCollapsedComposerCursor(value, cursor, mentionAgentIds);
+  const agentMentionsSignature = agentMentionSignature(agentMentions);
   const terminalContextsSignature = terminalContextSignature(terminalContexts);
+  const agentMentionsSignatureRef = useRef(agentMentionsSignature);
   const terminalContextsSignatureRef = useRef(terminalContextsSignature);
   const snapshotRef = useRef({
     value,
     cursor: initialCursor,
-    expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
+    expandedCursor: expandCollapsedComposerCursor(value, initialCursor, mentionAgentIds),
     terminalContextIds: terminalContexts.map((context) => context.id),
   });
   const isApplyingControlledUpdateRef = useRef(false);
@@ -917,12 +950,14 @@ function ComposerPromptEditorInner({
   }, [disabled, editor]);
 
   useLayoutEffect(() => {
-    const normalizedCursor = clampCollapsedComposerCursor(value, cursor);
+    const normalizedCursor = clampCollapsedComposerCursor(value, cursor, mentionAgentIds);
     const previousSnapshot = snapshotRef.current;
+    const agentMentionsChanged = agentMentionsSignatureRef.current !== agentMentionsSignature;
     const contextsChanged = terminalContextsSignatureRef.current !== terminalContextsSignature;
     if (
       previousSnapshot.value === value &&
       previousSnapshot.cursor === normalizedCursor &&
+      !agentMentionsChanged &&
       !contextsChanged
     ) {
       return;
@@ -931,22 +966,29 @@ function ComposerPromptEditorInner({
     snapshotRef.current = {
       value,
       cursor: normalizedCursor,
-      expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor),
+      expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor, mentionAgentIds),
       terminalContextIds: terminalContexts.map((context) => context.id),
     };
+    agentMentionsSignatureRef.current = agentMentionsSignature;
     terminalContextsSignatureRef.current = terminalContextsSignature;
 
     const rootElement = editor.getRootElement();
     const isFocused = Boolean(rootElement && document.activeElement === rootElement);
-    if (previousSnapshot.value === value && !contextsChanged && !isFocused) {
+    if (
+      previousSnapshot.value === value &&
+      !agentMentionsChanged &&
+      !contextsChanged &&
+      !isFocused
+    ) {
       return;
     }
 
     isApplyingControlledUpdateRef.current = true;
     editor.update(() => {
-      const shouldRewriteEditorState = previousSnapshot.value !== value || contextsChanged;
+      const shouldRewriteEditorState =
+        previousSnapshot.value !== value || agentMentionsChanged || contextsChanged;
       if (shouldRewriteEditorState) {
-        $setComposerEditorPrompt(value, terminalContexts);
+        $setComposerEditorPrompt(value, terminalContexts, agentMentions);
       }
       if (shouldRewriteEditorState || isFocused) {
         $setSelectionAtComposerOffset(normalizedCursor);
@@ -955,13 +997,26 @@ function ComposerPromptEditorInner({
     queueMicrotask(() => {
       isApplyingControlledUpdateRef.current = false;
     });
-  }, [cursor, editor, terminalContexts, terminalContextsSignature, value]);
+  }, [
+    agentMentions,
+    agentMentionsSignature,
+    cursor,
+    editor,
+    mentionAgentIds,
+    terminalContexts,
+    terminalContextsSignature,
+    value,
+  ]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
       const rootElement = editor.getRootElement();
       if (!rootElement) return;
-      const boundedCursor = clampCollapsedComposerCursor(snapshotRef.current.value, nextCursor);
+      const boundedCursor = clampCollapsedComposerCursor(
+        snapshotRef.current.value,
+        nextCursor,
+        mentionAgentIds,
+      );
       rootElement.focus();
       editor.update(() => {
         $setSelectionAtComposerOffset(boundedCursor);
@@ -969,7 +1024,11 @@ function ComposerPromptEditorInner({
       snapshotRef.current = {
         value: snapshotRef.current.value,
         cursor: boundedCursor,
-        expandedCursor: expandCollapsedComposerCursor(snapshotRef.current.value, boundedCursor),
+        expandedCursor: expandCollapsedComposerCursor(
+          snapshotRef.current.value,
+          boundedCursor,
+          mentionAgentIds,
+        ),
         terminalContextIds: snapshotRef.current.terminalContextIds,
       };
       onChangeRef.current(
@@ -980,7 +1039,7 @@ function ComposerPromptEditorInner({
         snapshotRef.current.terminalContextIds,
       );
     },
-    [editor],
+    [editor, mentionAgentIds],
   );
 
   const readSnapshot = useCallback((): {
@@ -992,10 +1051,15 @@ function ComposerPromptEditorInner({
     let snapshot = snapshotRef.current;
     editor.getEditorState().read(() => {
       const nextValue = $getRoot().getTextContent();
-      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
+      const fallbackCursor = clampCollapsedComposerCursor(
+        nextValue,
+        snapshotRef.current.cursor,
+        mentionAgentIds,
+      );
       const nextCursor = clampCollapsedComposerCursor(
         nextValue,
         $readSelectionOffsetFromEditorState(fallbackCursor),
+        mentionAgentIds,
       );
       const fallbackExpandedCursor = clampExpandedCursor(
         nextValue,
@@ -1015,7 +1079,7 @@ function ComposerPromptEditorInner({
     });
     snapshotRef.current = snapshot;
     return snapshot;
-  }, [editor]);
+  }, [editor, mentionAgentIds]);
 
   useImperativeHandle(
     editorRef,
@@ -1029,62 +1093,71 @@ function ComposerPromptEditorInner({
           collapseExpandedComposerCursor(
             snapshotRef.current.value,
             snapshotRef.current.value.length,
+            mentionAgentIds,
           ),
         );
       },
       readSnapshot,
     }),
-    [focusAt, readSnapshot],
+    [focusAt, mentionAgentIds, readSnapshot],
   );
 
-  const handleEditorChange = useCallback((editorState: EditorState) => {
-    editorState.read(() => {
-      const nextValue = $getRoot().getTextContent();
-      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
-      const nextCursor = clampCollapsedComposerCursor(
-        nextValue,
-        $readSelectionOffsetFromEditorState(fallbackCursor),
-      );
-      const fallbackExpandedCursor = clampExpandedCursor(
-        nextValue,
-        snapshotRef.current.expandedCursor,
-      );
-      const nextExpandedCursor = clampExpandedCursor(
-        nextValue,
-        $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
-      );
-      const terminalContextIds = collectTerminalContextIds($getRoot());
-      const previousSnapshot = snapshotRef.current;
-      if (
-        previousSnapshot.value === nextValue &&
-        previousSnapshot.cursor === nextCursor &&
-        previousSnapshot.expandedCursor === nextExpandedCursor &&
-        previousSnapshot.terminalContextIds.length === terminalContextIds.length &&
-        previousSnapshot.terminalContextIds.every((id, index) => id === terminalContextIds[index])
-      ) {
-        return;
-      }
-      if (isApplyingControlledUpdateRef.current) {
-        return;
-      }
-      snapshotRef.current = {
-        value: nextValue,
-        cursor: nextCursor,
-        expandedCursor: nextExpandedCursor,
-        terminalContextIds,
-      };
-      const cursorAdjacentToMention =
-        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left") ||
-        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "right");
-      onChangeRef.current(
-        nextValue,
-        nextCursor,
-        nextExpandedCursor,
-        cursorAdjacentToMention,
-        terminalContextIds,
-      );
-    });
-  }, []);
+  const handleEditorChange = useCallback(
+    (editorState: EditorState) => {
+      editorState.read(() => {
+        const nextValue = $getRoot().getTextContent();
+        const fallbackCursor = clampCollapsedComposerCursor(
+          nextValue,
+          snapshotRef.current.cursor,
+          mentionAgentIds,
+        );
+        const nextCursor = clampCollapsedComposerCursor(
+          nextValue,
+          $readSelectionOffsetFromEditorState(fallbackCursor),
+          mentionAgentIds,
+        );
+        const fallbackExpandedCursor = clampExpandedCursor(
+          nextValue,
+          snapshotRef.current.expandedCursor,
+        );
+        const nextExpandedCursor = clampExpandedCursor(
+          nextValue,
+          $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
+        );
+        const terminalContextIds = collectTerminalContextIds($getRoot());
+        const previousSnapshot = snapshotRef.current;
+        if (
+          previousSnapshot.value === nextValue &&
+          previousSnapshot.cursor === nextCursor &&
+          previousSnapshot.expandedCursor === nextExpandedCursor &&
+          previousSnapshot.terminalContextIds.length === terminalContextIds.length &&
+          previousSnapshot.terminalContextIds.every((id, index) => id === terminalContextIds[index])
+        ) {
+          return;
+        }
+        if (isApplyingControlledUpdateRef.current) {
+          return;
+        }
+        snapshotRef.current = {
+          value: nextValue,
+          cursor: nextCursor,
+          expandedCursor: nextExpandedCursor,
+          terminalContextIds,
+        };
+        const cursorAdjacentToMention =
+          isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left", mentionAgentIds) ||
+          isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "right", mentionAgentIds);
+        onChangeRef.current(
+          nextValue,
+          nextCursor,
+          nextExpandedCursor,
+          cursorAdjacentToMention,
+          terminalContextIds,
+        );
+      });
+    },
+    [mentionAgentIds],
+  );
 
   return (
     <ComposerTerminalContextActionsContext.Provider value={terminalContextActions}>
@@ -1113,7 +1186,7 @@ function ComposerPromptEditorInner({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-        <ComposerInlineTokenArrowPlugin />
+        <ComposerInlineTokenArrowPlugin mentionAgentIds={mentionAgentIds} />
         <ComposerInlineTokenSelectionNormalizePlugin />
         <ComposerInlineTokenBackspacePlugin />
         <HistoryPlugin />
@@ -1129,6 +1202,7 @@ export const ComposerPromptEditor = forwardRef<
   {
     value,
     cursor,
+    agentMentions,
     terminalContexts,
     disabled,
     placeholder,
@@ -1141,6 +1215,7 @@ export const ComposerPromptEditor = forwardRef<
   ref,
 ) {
   const initialValueRef = useRef(value);
+  const initialAgentMentionsRef = useRef(agentMentions);
   const initialTerminalContextsRef = useRef(terminalContexts);
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
@@ -1148,7 +1223,11 @@ export const ComposerPromptEditor = forwardRef<
       editable: true,
       nodes: [ComposerMentionNode, ComposerTerminalContextNode],
       editorState: () => {
-        $setComposerEditorPrompt(initialValueRef.current, initialTerminalContextsRef.current);
+        $setComposerEditorPrompt(
+          initialValueRef.current,
+          initialTerminalContextsRef.current,
+          initialAgentMentionsRef.current,
+        );
       },
       onError: (error) => {
         throw error;
@@ -1162,6 +1241,7 @@ export const ComposerPromptEditor = forwardRef<
       <ComposerPromptEditorInner
         value={value}
         cursor={cursor}
+        agentMentions={agentMentions}
         terminalContexts={terminalContexts}
         disabled={disabled}
         placeholder={placeholder}

@@ -168,6 +168,11 @@ export function createWsNativeApi(): NativeApi {
       searchEntries: (input) => transport.request(WS_METHODS.projectsSearchEntries, input),
       writeFile: (input) => transport.request(WS_METHODS.projectsWriteFile, input),
     },
+    agents: {
+      listCatalog: (input) => transport.request(WS_METHODS.agentsListCatalog, input),
+      install: (input) => transport.request(WS_METHODS.agentsInstall, input),
+      uninstall: (input) => transport.request(WS_METHODS.agentsUninstall, input),
+    },
     shell: {
       openInEditor: (cwd, editor) =>
         transport.request(WS_METHODS.shellOpenInEditor, { cwd, editor }),

@@ -10,14 +10,14 @@ export type ComposerPromptSegment =
     }
   | {
       type: "mention";
-      path: string;
+      agentId: string;
     }
   | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
     };
 
-const MENTION_TOKEN_REGEX = /(^|\s)@([^\s@]+)(?=\s)/g;
+const MENTION_TOKEN_REGEX = /(^|\s)@([a-z0-9][a-z0-9-]*)(?=\s)/gi;
 
 function pushTextSegment(segments: ComposerPromptSegment[], text: string): void {
   if (!text) return;
@@ -29,7 +29,10 @@ function pushTextSegment(segments: ComposerPromptSegment[], text: string): void 
   segments.push({ type: "text", text });
 }
 
-function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegment[] {
+function splitPromptTextIntoComposerSegments(
+  text: string,
+  knownAgentIds: ReadonlySet<string>,
+): ComposerPromptSegment[] {
   const segments: ComposerPromptSegment[] = [];
   if (!text) {
     return segments;
@@ -39,7 +42,7 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
   for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
     const fullMatch = match[0];
     const prefix = match[1] ?? "";
-    const path = match[2] ?? "";
+    const agentId = (match[2] ?? "").toLowerCase();
     const matchIndex = match.index ?? 0;
     const mentionStart = matchIndex + prefix.length;
     const mentionEnd = mentionStart + fullMatch.length - prefix.length;
@@ -48,8 +51,8 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
       pushTextSegment(segments, text.slice(cursor, mentionStart));
     }
 
-    if (path.length > 0) {
-      segments.push({ type: "mention", path });
+    if (agentId.length > 0 && knownAgentIds.has(agentId)) {
+      segments.push({ type: "mention", agentId });
     } else {
       pushTextSegment(segments, text.slice(mentionStart, mentionEnd));
     }
@@ -67,12 +70,14 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
+  knownAgentIds: ReadonlyArray<string> = [],
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
   }
 
   const segments: ComposerPromptSegment[] = [];
+  const knownAgentIdSet = new Set(knownAgentIds.map((agentId) => agentId.trim().toLowerCase()));
   let textCursor = 0;
   let terminalContextIndex = 0;
 
@@ -82,7 +87,9 @@ export function splitPromptIntoComposerSegments(
     }
 
     if (index > textCursor) {
-      segments.push(...splitPromptTextIntoComposerSegments(prompt.slice(textCursor, index)));
+      segments.push(
+        ...splitPromptTextIntoComposerSegments(prompt.slice(textCursor, index), knownAgentIdSet),
+      );
     }
     segments.push({
       type: "terminal-context",
@@ -93,7 +100,9 @@ export function splitPromptIntoComposerSegments(
   }
 
   if (textCursor < prompt.length) {
-    segments.push(...splitPromptTextIntoComposerSegments(prompt.slice(textCursor)));
+    segments.push(
+      ...splitPromptTextIntoComposerSegments(prompt.slice(textCursor), knownAgentIdSet),
+    );
   }
 
   return segments;

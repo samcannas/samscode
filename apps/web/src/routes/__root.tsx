@@ -23,6 +23,7 @@ import { terminalRunningSubprocessFromEvent } from "../terminalActivity";
 import { onServerConfigUpdated, onServerWelcome } from "../wsNativeApi";
 import { providerQueryKeys } from "../lib/providerReactQuery";
 import { projectQueryKeys } from "../lib/projectReactQuery";
+import { agentQueryKeys } from "../lib/agentReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
 
 export const Route = createRootRouteWithContext<{
@@ -193,9 +194,10 @@ function EventRouter() {
         if (needsProviderInvalidation) {
           needsProviderInvalidation = false;
           void queryClient.invalidateQueries({ queryKey: providerQueryKeys.all });
-          // Invalidate workspace entry queries so the @-mention file picker
-          // reflects files created, deleted, or restored during this turn.
+          // Invalidate project queries so any cached workspace-derived data stays
+          // in sync after files are created, deleted, or restored during this turn.
           void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
+          void queryClient.invalidateQueries({ queryKey: agentQueryKeys.all });
         }
         void syncSnapshot();
       },

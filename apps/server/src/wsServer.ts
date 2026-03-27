@@ -79,6 +79,7 @@ import { expandHomePath } from "./os-jank.ts";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@samscode/shared/schemaJson";
+import { installCatalogAgent, listAgentCatalog, uninstallCatalogAgent } from "./agentCatalog";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -256,6 +257,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const terminalManager = yield* TerminalManager;
   const keybindingsManager = yield* Keybindings;
   const speechToText = yield* SpeechToText;
+  const providerService = yield* ProviderService;
   const providerHealth = yield* ProviderHealth;
   const git = yield* GitCore;
   const upstreamSync = yield* UpstreamSync;
@@ -789,6 +791,62 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           ),
         );
         return { relativePath: target.relativePath };
+      }
+
+      case WS_METHODS.agentsListCatalog: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () =>
+            listAgentCatalog({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+              ...(body.codexHomePath ? { codexHomePath: body.codexHomePath } : {}),
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to list agent catalog: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.agentsInstall: {
+        const body = stripRequestTag(request.body);
+        const activeSessions = yield* providerService.listSessions();
+        return yield* Effect.tryPromise({
+          try: () =>
+            installCatalogAgent({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+              agentId: body.agentId,
+              target: body.target,
+              ...(body.codexHomePath ? { codexHomePath: body.codexHomePath } : {}),
+              activeSessions,
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to install agent: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.agentsUninstall: {
+        const body = stripRequestTag(request.body);
+        const activeSessions = yield* providerService.listSessions();
+        return yield* Effect.tryPromise({
+          try: () =>
+            uninstallCatalogAgent({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+              agentId: body.agentId,
+              target: body.target,
+              ...(body.codexHomePath ? { codexHomePath: body.codexHomePath } : {}),
+              activeSessions,
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to uninstall agent: ${String(cause)}`,
+            }),
+        });
       }
 
       case WS_METHODS.shellOpenInEditor: {

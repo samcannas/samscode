@@ -1,18 +1,17 @@
-import { type ProjectEntry, type ModelSlug, type ProviderKind } from "@samscode/contracts";
+import { type ModelSlug, type ProviderKind } from "@samscode/contracts";
 import { memo } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { BotIcon } from "lucide-react";
+import type { ComposerAgentDefinition } from "~/agentMentions";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Command, CommandItem, CommandList } from "../ui/command";
-import { VscodeEntryIcon } from "./VscodeEntryIcon";
 
 export type ComposerCommandItem =
   | {
       id: string;
-      type: "path";
-      path: string;
-      pathKind: ProjectEntry["kind"];
+      type: "agent";
+      agent: ComposerAgentDefinition;
       label: string;
       description: string;
     }
@@ -34,7 +33,6 @@ export type ComposerCommandItem =
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   items: ComposerCommandItem[];
-  resolvedTheme: "light" | "dark";
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
   activeItemId: string | null;
@@ -56,7 +54,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
             <ComposerCommandMenuItem
               key={item.id}
               item={item}
-              resolvedTheme={props.resolvedTheme}
               isActive={props.activeItemId === item.id}
               onSelect={props.onSelect}
             />
@@ -65,9 +62,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         {props.items.length === 0 && (
           <p className="px-3 py-2 text-muted-foreground/70 text-xs">
             {props.isLoading
-              ? "Searching workspace files..."
-              : props.triggerKind === "path"
-                ? "No matching files or folders."
+              ? "Loading installed agents..."
+              : props.triggerKind === "agent"
+                ? "No matching installed agents."
                 : "No matching command."}
           </p>
         )}
@@ -78,7 +75,6 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
-  resolvedTheme: "light" | "dark";
   isActive: boolean;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
@@ -96,19 +92,18 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         props.onSelect(props.item);
       }}
     >
-      {props.item.type === "path" ? (
-        <VscodeEntryIcon
-          pathValue={props.item.path}
-          kind={props.item.pathKind}
-          theme={props.resolvedTheme}
-        />
-      ) : null}
+      {props.item.type === "agent" ? <BotIcon className="size-4 text-muted-foreground/80" /> : null}
       {props.item.type === "slash-command" ? (
         <BotIcon className="size-4 text-muted-foreground/80" />
       ) : null}
       {props.item.type === "model" ? (
         <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
           model
+        </Badge>
+      ) : null}
+      {props.item.type === "agent" ? (
+        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+          agent
         </Badge>
       ) : null}
       <span className="flex min-w-0 items-center gap-1.5 truncate">

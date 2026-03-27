@@ -37,6 +37,7 @@ import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload } from "./server";
+import { AgentCatalogListInput, AgentInstallInput, AgentUninstallInput } from "./agents";
 import {
   SpeechToTextAppendAudioBatchInput,
   SpeechToTextCancelSessionInput,
@@ -67,6 +68,9 @@ export const WS_METHODS = {
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  agentsListCatalog: "agents.listCatalog",
+  agentsInstall: "agents.install",
+  agentsUninstall: "agents.uninstall",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -147,6 +151,9 @@ const WebSocketRequestBody = Schema.Union([
   // Project Search
   tagRequestBody(WS_METHODS.projectsSearchEntries, ProjectSearchEntriesInput),
   tagRequestBody(WS_METHODS.projectsWriteFile, ProjectWriteFileInput),
+  tagRequestBody(WS_METHODS.agentsListCatalog, AgentCatalogListInput),
+  tagRequestBody(WS_METHODS.agentsInstall, AgentInstallInput),
+  tagRequestBody(WS_METHODS.agentsUninstall, AgentUninstallInput),
 
   // Shell methods
   tagRequestBody(WS_METHODS.shellOpenInEditor, OpenInEditorInput),

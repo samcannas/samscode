@@ -1,7 +1,7 @@
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-export type ComposerTriggerKind = "path" | "slash-command" | "slash-model";
+export type ComposerTriggerKind = "agent" | "slash-command" | "slash-model";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 
 export interface ComposerTrigger {
@@ -39,9 +39,13 @@ function tokenStartForCursor(text: string, cursor: number): number {
   return index + 1;
 }
 
-export function expandCollapsedComposerCursor(text: string, cursorInput: number): number {
+export function expandCollapsedComposerCursor(
+  text: string,
+  cursorInput: number,
+  mentionAgentIds: ReadonlyArray<string> = [],
+): number {
   const collapsedCursor = clampCursor(text, cursorInput);
-  const segments = splitPromptIntoComposerSegments(text);
+  const segments = splitPromptIntoComposerSegments(text, [], mentionAgentIds);
   if (segments.length === 0) {
     return collapsedCursor;
   }
@@ -51,7 +55,7 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
 
   for (const segment of segments) {
     if (segment.type === "mention") {
-      const expandedLength = segment.path.length + 1;
+      const expandedLength = segment.agentId.length + 1;
       if (remaining <= 1) {
         return expandedCursor + (remaining === 0 ? 0 : expandedLength);
       }
@@ -104,16 +108,24 @@ function clampCollapsedComposerCursorForSegments(
   return Math.max(0, Math.min(collapsedLength, Math.floor(cursorInput)));
 }
 
-export function clampCollapsedComposerCursor(text: string, cursorInput: number): number {
+export function clampCollapsedComposerCursor(
+  text: string,
+  cursorInput: number,
+  mentionAgentIds: ReadonlyArray<string> = [],
+): number {
   return clampCollapsedComposerCursorForSegments(
-    splitPromptIntoComposerSegments(text),
+    splitPromptIntoComposerSegments(text, [], mentionAgentIds),
     cursorInput,
   );
 }
 
-export function collapseExpandedComposerCursor(text: string, cursorInput: number): number {
+export function collapseExpandedComposerCursor(
+  text: string,
+  cursorInput: number,
+  mentionAgentIds: ReadonlyArray<string> = [],
+): number {
   const expandedCursor = clampCursor(text, cursorInput);
-  const segments = splitPromptIntoComposerSegments(text);
+  const segments = splitPromptIntoComposerSegments(text, [], mentionAgentIds);
   if (segments.length === 0) {
     return expandedCursor;
   }
@@ -123,7 +135,7 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
 
   for (const segment of segments) {
     if (segment.type === "mention") {
-      const expandedLength = segment.path.length + 1;
+      const expandedLength = segment.agentId.length + 1;
       if (remaining === 0) {
         return collapsedCursor;
       }
@@ -158,8 +170,9 @@ export function isCollapsedCursorAdjacentToInlineToken(
   text: string,
   cursorInput: number,
   direction: "left" | "right",
+  mentionAgentIds: ReadonlyArray<string> = [],
 ): boolean {
-  const segments = splitPromptIntoComposerSegments(text);
+  const segments = splitPromptIntoComposerSegments(text, [], mentionAgentIds);
   if (!segments.some(isInlineTokenSegment)) {
     return false;
   }
@@ -230,7 +243,7 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
   }
 
   return {
-    kind: "path",
+    kind: "agent",
     query: token.slice(1),
     rangeStart: tokenStart,
     rangeEnd: cursor,

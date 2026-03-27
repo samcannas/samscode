@@ -19,6 +19,14 @@ import type {
   GitStatusResult,
 } from "./git";
 import type {
+  AgentCatalogListInput,
+  AgentCatalogListResult,
+  AgentInstallInput,
+  AgentInstallResult,
+  AgentUninstallInput,
+  AgentUninstallResult,
+} from "./agents";
+import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -150,6 +158,11 @@ export interface NativeApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+  };
+  agents: {
+    listCatalog: (input: AgentCatalogListInput) => Promise<AgentCatalogListResult>;
+    install: (input: AgentInstallInput) => Promise<AgentInstallResult>;
+    uninstall: (input: AgentUninstallInput) => Promise<AgentUninstallResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
