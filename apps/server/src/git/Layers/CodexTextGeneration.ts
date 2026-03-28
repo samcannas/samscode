@@ -9,6 +9,7 @@ import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@samscode/sha
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { runProcess } from "../../processRunner.ts";
+import { resolveCliBinary, shouldUseShellForBinary } from "../../provider/resolveCliBinary.ts";
 import { TextGenerationError } from "../Errors.ts";
 import {
   type BranchNameGenerationInput,
@@ -118,6 +119,19 @@ function previewStructuredOutput(raw: string): string {
   return `${normalized.slice(0, 217)}...`;
 }
 
+function getCodexEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => {
+      if (key === "ELECTRON_RUN_AS_NODE") return false;
+      if (key.startsWith("ELECTRON_")) return false;
+      if (key.startsWith("npm_")) return false;
+      if (key.startsWith("NODE_")) return false;
+      if (key.startsWith("BUN_")) return false;
+      return true;
+    }),
+  );
+}
+
 function extractCodexLastTextFromJsonLines(raw: string): string | null {
   let lastText: string | null = null;
   for (const line of raw.split(/\r?\n/g)) {
@@ -202,49 +216,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     });
 
   const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
-  const codexEnv = Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => {
-      if (key === "ELECTRON_RUN_AS_NODE") return false;
-      if (key.startsWith("ELECTRON_")) return false;
-      if (key.startsWith("npm_")) return false;
-      if (key.startsWith("NODE_")) return false;
-      if (key.startsWith("BUN_")) return false;
-      return true;
-    }),
-  );
-  let cachedCodexExecutablePath: string | null = null;
-
-  const resolveCodexExecutablePath = async (): Promise<string> => {
-    if (cachedCodexExecutablePath) {
-      return cachedCodexExecutablePath;
-    }
-    if (process.platform !== "win32") {
-      cachedCodexExecutablePath = "codex";
-      return cachedCodexExecutablePath;
-    }
-
-    try {
-      const result = await runProcess("where", ["codex.exe"], {
-        env: codexEnv,
-        timeoutMs: 10_000,
-        allowNonZeroExit: true,
-        outputMode: "truncate",
-      });
-      const matches = result.stdout
-        .split(/\r?\n/g)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0 && line.toLowerCase().endsWith("codex.exe"));
-      const preferredMatch =
-        matches.find((line) => line.toLowerCase().includes("\\.vite-plus\\bin\\codex.exe")) ??
-        matches.find((line) => !line.toLowerCase().includes("\\.bun\\bin\\codex.exe")) ??
-        matches[0];
-      cachedCodexExecutablePath = preferredMatch ?? "codex";
-      return cachedCodexExecutablePath;
-    } catch {
-      cachedCodexExecutablePath = "codex";
-      return cachedCodexExecutablePath;
-    }
-  };
+  const resolveCodexExecutablePath = (): string => resolveCliBinary("codex", getCodexEnv());
 
   const writeTempFile = (
     operation: string,
@@ -331,11 +303,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     modelOptions?: CodexModelOptions;
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
-      const codexExecutablePath = yield* Effect.promise(() => resolveCodexExecutablePath()).pipe(
-        Effect.mapError((cause) =>
-          normalizeCodexError(operation, cause, "Failed to resolve Codex CLI path"),
-        ),
-      );
+      const codexExecutablePath = resolveCodexExecutablePath();
+      const codexEnv = getCodexEnv();
       const schemaPath = yield* writeTempFile(
         operation,
         "codex-schema",
@@ -365,7 +334,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           {
             cwd,
             env: codexEnv,
-            shell: process.platform === "win32",
+            shell: shouldUseShellForBinary(codexExecutablePath),
             stdin: {
               stream: Stream.make(new TextEncoder().encode(prompt)),
             },
@@ -480,7 +449,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
   }): Effect.Effect<string, TextGenerationError> =>
     Effect.tryPromise({
       try: async () => {
-        const codexExecutablePath = await resolveCodexExecutablePath();
+        const codexExecutablePath = resolveCodexExecutablePath();
+        const codexEnv = getCodexEnv();
         const timeoutMs =
           operation === "analyzeUpstreamSync" ? CODEX_UPSTREAM_SYNC_TIMEOUT_MS : CODEX_TIMEOUT_MS;
         const result = await runProcess(
