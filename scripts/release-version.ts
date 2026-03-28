@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,7 +26,7 @@ function run(command: string, args: ReadonlyArray<string>, cwd: string): string 
     cwd,
     stdio: ["inherit", "pipe", "pipe"],
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: false,
   });
 
   if (result.stdout) {
@@ -43,11 +44,42 @@ function run(command: string, args: ReadonlyArray<string>, cwd: string): string 
   return result.stdout ?? "";
 }
 
-function ensureCleanWorktree(cwd: string): void {
-  const status = run("git", ["status", "--short"], cwd).trim();
-  if (status.length > 0) {
-    throw new Error("Git worktree must be clean before running release:version.");
+function parseDirtyPaths(statusOutput: string): string[] {
+  return statusOutput
+    .split(/\r?\n/u)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+    .map((line) => line.slice(3).trim())
+    .map((line) => {
+      const renamedParts = line.split(" -> ");
+      return renamedParts[renamedParts.length - 1] ?? line;
+    });
+}
+
+function releaseFilesAlreadyMatch(version: string, cwd: string): boolean {
+  return releasePackageFiles.every((relativePath) => {
+    const packageJson = JSON.parse(readFileSync(resolve(cwd, relativePath), "utf8")) as {
+      version?: unknown;
+    };
+    return packageJson.version === version;
+  });
+}
+
+function ensureWorktreeReady(version: string, cwd: string): void {
+  const statusOutput = run("git", ["status", "--short"], cwd).trim();
+  if (statusOutput.length === 0) {
+    return;
   }
+
+  const allowedPaths = new Set([...releasePackageFiles, "bun.lock"]);
+  const dirtyPaths = parseDirtyPaths(statusOutput);
+  const onlyReleaseFilesDirty = dirtyPaths.every((relativePath) => allowedPaths.has(relativePath));
+
+  if (onlyReleaseFilesDirty && releaseFilesAlreadyMatch(version, cwd)) {
+    return;
+  }
+
+  throw new Error("Git worktree must be clean before running release:version.");
 }
 
 function ensureTagDoesNotExist(version: string, cwd: string): void {
@@ -55,7 +87,7 @@ function ensureTagDoesNotExist(version: string, cwd: string): void {
   const result = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/${tagName}`], {
     cwd,
     stdio: "ignore",
-    shell: process.platform === "win32",
+    shell: false,
   });
 
   if (result.status === 0) {
@@ -71,7 +103,7 @@ function main(): void {
   const version = parseVersion(process.argv.slice(2));
   const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
-  ensureCleanWorktree(rootDir);
+  ensureWorktreeReady(version, rootDir);
   ensureTagDoesNotExist(version, rootDir);
 
   const { changed } = updateReleasePackageVersions(version, { rootDir });
