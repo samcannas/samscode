@@ -141,6 +141,7 @@ Checklist:
 
 1. Ensure `main` is green in CI.
 2. Bump app versions as needed.
+   - Shortcut: `bun run release:version -- 0.1.1`
 3. Create a release tag: `vX.Y.Z`.
 4. Push the tag.
 5. Verify workflow steps:
@@ -148,6 +149,15 @@ Checklist:
    - all matrix builds pass
    - release job uploads expected files
 6. Smoke test downloaded artifacts.
+
+`bun run release:version -- <version>` performs the standard release prep chain for a clean worktree:
+
+- updates release package versions
+- refreshes `bun.lock`
+- commits with `Bump version to <version>`
+- pushes the branch
+- creates tag `v<version>`
+- pushes the tag to `origin`
 
 ## 5) Troubleshooting
 

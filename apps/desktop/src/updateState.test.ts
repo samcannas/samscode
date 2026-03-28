@@ -5,6 +5,9 @@ import {
   getCanRetryAfterDownloadFailure,
   getAutoUpdateDisabledReason,
   nextStatusAfterDownloadFailure,
+  resolveDesktopUpdateMetadata,
+  resolveDesktopUpdateReleaseNotes,
+  resolveDesktopUpdateSizeBytes,
   shouldBroadcastDownloadProgress,
 } from "./updateState";
 
@@ -17,8 +20,13 @@ const baseState: DesktopUpdateState = {
   runningUnderArm64Translation: false,
   availableVersion: null,
   downloadedVersion: null,
+  pendingInstallVersion: null,
+  releaseName: null,
+  releaseNotes: null,
+  availableSizeBytes: null,
   downloadPercent: null,
   checkedAt: null,
+  downloadedAt: null,
   message: null,
   errorContext: null,
   canRetry: false,
@@ -97,6 +105,34 @@ describe("getAutoUpdateDisabledReason", () => {
         disabledByEnv: false,
       }),
     ).toContain("AppImage");
+  });
+});
+
+describe("desktop update metadata helpers", () => {
+  it("extracts release notes from structured changelog arrays", () => {
+    expect(
+      resolveDesktopUpdateReleaseNotes([{ note: "First note" }, { note: "Second note" }]),
+    ).toBe("First note\n\nSecond note");
+  });
+
+  it("uses the largest file size as an approximate download size", () => {
+    expect(resolveDesktopUpdateSizeBytes([{ size: 12 }, { size: 42 }])).toBe(42);
+  });
+
+  it("normalizes update metadata from updater payloads", () => {
+    expect(
+      resolveDesktopUpdateMetadata({
+        version: "1.1.0",
+        releaseName: " Sam's Code 1.1.0 ",
+        releaseNotes: " Adds update prompts ",
+        files: [{ size: 2048 }],
+      }),
+    ).toEqual({
+      version: "1.1.0",
+      releaseName: "Sam's Code 1.1.0",
+      releaseNotes: "Adds update prompts",
+      availableSizeBytes: 2048,
+    });
   });
 });
 

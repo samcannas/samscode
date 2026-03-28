@@ -2,6 +2,17 @@ import type { DesktopRuntimeInfo, DesktopUpdateState } from "@samscode/contracts
 
 import { getCanRetryAfterDownloadFailure, nextStatusAfterDownloadFailure } from "./updateState";
 
+interface DesktopUpdateMetadataInput {
+  version: string;
+  releaseName: string | null;
+  releaseNotes: string | null;
+  availableSizeBytes: number | null;
+}
+
+interface PendingInstallHintInput extends DesktopUpdateMetadataInput {
+  downloadedAt: string;
+}
+
 export function createInitialDesktopUpdateState(
   currentVersion: string,
   runtimeInfo: DesktopRuntimeInfo,
@@ -15,11 +26,30 @@ export function createInitialDesktopUpdateState(
     runningUnderArm64Translation: runtimeInfo.runningUnderArm64Translation,
     availableVersion: null,
     downloadedVersion: null,
+    pendingInstallVersion: null,
+    releaseName: null,
+    releaseNotes: null,
+    availableSizeBytes: null,
     downloadPercent: null,
     checkedAt: null,
+    downloadedAt: null,
     message: null,
     errorContext: null,
     canRetry: false,
+  };
+}
+
+export function reduceDesktopUpdateStateOnPendingInstallHintRestored(
+  state: DesktopUpdateState,
+  hint: PendingInstallHintInput,
+): DesktopUpdateState {
+  return {
+    ...state,
+    pendingInstallVersion: hint.version,
+    releaseName: hint.releaseName,
+    releaseNotes: hint.releaseNotes,
+    availableSizeBytes: hint.availableSizeBytes,
+    downloadedAt: hint.downloadedAt,
   };
 }
 
@@ -56,16 +86,24 @@ export function reduceDesktopUpdateStateOnCheckFailure(
 
 export function reduceDesktopUpdateStateOnUpdateAvailable(
   state: DesktopUpdateState,
-  version: string,
+  metadata: DesktopUpdateMetadataInput,
   checkedAt: string,
 ): DesktopUpdateState {
+  const pendingInstallVersion =
+    state.pendingInstallVersion === metadata.version ? state.pendingInstallVersion : null;
+
   return {
     ...state,
     status: "available",
-    availableVersion: version,
+    availableVersion: metadata.version,
     downloadedVersion: null,
+    pendingInstallVersion,
+    releaseName: metadata.releaseName,
+    releaseNotes: metadata.releaseNotes,
+    availableSizeBytes: metadata.availableSizeBytes,
     downloadPercent: null,
     checkedAt,
+    downloadedAt: pendingInstallVersion ? state.downloadedAt : null,
     message: null,
     errorContext: null,
     canRetry: false,
@@ -81,8 +119,13 @@ export function reduceDesktopUpdateStateOnNoUpdate(
     status: "up-to-date",
     availableVersion: null,
     downloadedVersion: null,
+    pendingInstallVersion: null,
+    releaseName: null,
+    releaseNotes: null,
+    availableSizeBytes: null,
     downloadPercent: null,
     checkedAt,
+    downloadedAt: null,
     message: null,
     errorContext: null,
     canRetry: false,
@@ -132,14 +175,20 @@ export function reduceDesktopUpdateStateOnDownloadProgress(
 
 export function reduceDesktopUpdateStateOnDownloadComplete(
   state: DesktopUpdateState,
-  version: string,
+  metadata: DesktopUpdateMetadataInput,
+  downloadedAt: string,
 ): DesktopUpdateState {
   return {
     ...state,
     status: "downloaded",
-    availableVersion: version,
-    downloadedVersion: version,
+    availableVersion: metadata.version,
+    downloadedVersion: metadata.version,
+    pendingInstallVersion: metadata.version,
+    releaseName: metadata.releaseName,
+    releaseNotes: metadata.releaseNotes,
+    availableSizeBytes: metadata.availableSizeBytes,
     downloadPercent: 100,
+    downloadedAt,
     message: null,
     errorContext: null,
     canRetry: true,

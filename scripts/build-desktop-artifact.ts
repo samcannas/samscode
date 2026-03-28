@@ -452,6 +452,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     appId: "com.samstack.samscode",
     productName,
     artifactName: "samscode-${version}-${arch}.${ext}",
+    electronUpdaterCompatibility: ">=2.16",
     directories: {
       buildResources: "apps/desktop/resources",
     },

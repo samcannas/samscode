@@ -10,6 +10,7 @@ import {
   reduceDesktopUpdateStateOnDownloadStart,
   reduceDesktopUpdateStateOnInstallFailure,
   reduceDesktopUpdateStateOnNoUpdate,
+  reduceDesktopUpdateStateOnPendingInstallHintRestored,
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
 
@@ -81,7 +82,13 @@ describe("updateMachine", () => {
         status: "downloading",
         availableVersion: "1.1.0",
       },
-      "1.1.0",
+      {
+        version: "1.1.0",
+        releaseName: "Sam's Code 1.1.0",
+        releaseNotes: "Adds updater prompts.",
+        availableSizeBytes: 1024,
+      },
+      "2026-03-04T00:00:00.000Z",
     );
     const failedInstall = reduceDesktopUpdateStateOnInstallFailure(
       downloaded,
@@ -90,6 +97,8 @@ describe("updateMachine", () => {
 
     expect(downloaded.status).toBe("downloaded");
     expect(downloaded.downloadedVersion).toBe("1.1.0");
+    expect(downloaded.pendingInstallVersion).toBe("1.1.0");
+    expect(downloaded.downloadedAt).toBe("2026-03-04T00:00:00.000Z");
     expect(failedInstall.status).toBe("downloaded");
     expect(failedInstall.errorContext).toBe("install");
     expect(failedInstall.canRetry).toBe(true);
@@ -124,7 +133,12 @@ describe("updateMachine", () => {
         enabled: true,
         status: "checking",
       },
-      "1.1.0",
+      {
+        version: "1.1.0",
+        releaseName: "Sam's Code 1.1.0",
+        releaseNotes: "Adds updater prompts.",
+        availableSizeBytes: 1024,
+      },
       "2026-03-04T00:00:00.000Z",
     );
     const downloading = reduceDesktopUpdateStateOnDownloadStart(available);
@@ -135,5 +149,26 @@ describe("updateMachine", () => {
     expect(downloading.downloadPercent).toBe(0);
     expect(progress.downloadPercent).toBe(55.5);
     expect(progress.errorContext).toBeNull();
+  });
+
+  it("restores persisted install hints without pretending the update is already active", () => {
+    const restored = reduceDesktopUpdateStateOnPendingInstallHintRestored(
+      {
+        ...createInitialDesktopUpdateState("1.0.0", runtimeInfo),
+        enabled: true,
+        status: "idle",
+      },
+      {
+        version: "1.1.0",
+        releaseName: "Sam's Code 1.1.0",
+        releaseNotes: "Adds updater prompts.",
+        availableSizeBytes: 1024,
+        downloadedAt: "2026-03-04T00:00:00.000Z",
+      },
+    );
+
+    expect(restored.status).toBe("idle");
+    expect(restored.pendingInstallVersion).toBe("1.1.0");
+    expect(restored.downloadedVersion).toBeNull();
   });
 });

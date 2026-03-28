@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@samscode/contracts";
 
 import {
+  formatDesktopUpdateByteSize,
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
+  getDesktopUpdateReleaseNotesSnippet,
+  getDesktopUpdateSettingsDescription,
+  getDesktopUpdateStatusSummary,
+  getDesktopUpdateVersion,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
+  resolveDesktopUpdatePromptKind,
   shouldHighlightDesktopUpdateError,
   shouldShowArm64IntelBuildWarning,
   shouldShowDesktopUpdateButton,
@@ -22,8 +28,13 @@ const baseState: DesktopUpdateState = {
   runningUnderArm64Translation: false,
   availableVersion: null,
   downloadedVersion: null,
+  pendingInstallVersion: null,
+  releaseName: null,
+  releaseNotes: null,
+  availableSizeBytes: null,
   downloadPercent: null,
   checkedAt: null,
+  downloadedAt: null,
   message: null,
   errorContext: null,
   canRetry: false,
@@ -168,6 +179,7 @@ describe("desktop update UI helpers", () => {
         ...baseState,
         status: "error",
         errorContext: "download",
+        message: "checksum mismatch",
         canRetry: true,
       }),
     ).toBe(true);
@@ -176,6 +188,7 @@ describe("desktop update UI helpers", () => {
         ...baseState,
         status: "error",
         errorContext: "check",
+        message: "network unavailable",
         canRetry: true,
       }),
     ).toBe(false);
@@ -205,5 +218,36 @@ describe("desktop update UI helpers", () => {
     };
 
     expect(getArm64IntelBuildWarningDescription(state)).toContain("Download the available update");
+  });
+
+  it("formats richer update summaries for settings and prompts", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "available",
+      availableVersion: "1.1.0",
+      releaseNotes: "Adds restart prompts and installer verification on relaunch.",
+      availableSizeBytes: 182 * 1024 * 1024,
+      checkedAt: "2026-03-04T00:00:00.000Z",
+    };
+
+    expect(resolveDesktopUpdatePromptKind(state)).toBe("available");
+    expect(getDesktopUpdateVersion(state)).toBe("1.1.0");
+    expect(formatDesktopUpdateByteSize(state.availableSizeBytes)).toBe("~182.0 MB");
+    expect(getDesktopUpdateReleaseNotesSnippet(state)).toContain("restart prompts");
+    expect(getDesktopUpdateStatusSummary(state)).toContain("ready to download");
+    expect(getDesktopUpdateSettingsDescription(state)).toContain("Last checked");
+  });
+
+  it("prefers verifying prompts when a downloaded installer is being revalidated", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "checking",
+      pendingInstallVersion: "1.1.0",
+      releaseName: "Sam's Code 1.1.0",
+      downloadedAt: "2026-03-04T00:00:00.000Z",
+    };
+
+    expect(resolveDesktopUpdatePromptKind(state)).toBe("verifying");
+    expect(getDesktopUpdateStatusSummary(state)).toContain("Verifying");
   });
 });

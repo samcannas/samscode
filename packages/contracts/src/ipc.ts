@@ -121,8 +121,13 @@ export interface DesktopUpdateState {
   runningUnderArm64Translation: boolean;
   availableVersion: string | null;
   downloadedVersion: string | null;
+  pendingInstallVersion: string | null;
+  releaseName: string | null;
+  releaseNotes: string | null;
+  availableSizeBytes: number | null;
   downloadPercent: number | null;
   checkedAt: string | null;
+  downloadedAt: string | null;
   message: string | null;
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
@@ -146,6 +151,7 @@ export interface DesktopBridge {
   openExternal: (url: string) => Promise<boolean>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
+  checkForUpdates: () => Promise<DesktopUpdateState>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;

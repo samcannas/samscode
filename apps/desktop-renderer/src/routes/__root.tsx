@@ -12,6 +12,7 @@ import { Throttler } from "@tanstack/react-pacer";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { Button } from "../components/ui/button";
+import { DesktopUpdateNotifications } from "../components/DesktopUpdateNotifications";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
@@ -54,6 +55,7 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <EventRouter />
+        <DesktopUpdateNotifications />
         <DesktopProjectBootstrap />
         <Outlet />
       </AnchoredToastProvider>

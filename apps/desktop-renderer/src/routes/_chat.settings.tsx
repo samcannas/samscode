@@ -18,6 +18,7 @@ import {
 } from "../appSettings";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { useTheme } from "../hooks/useTheme";
+import { useDesktopUpdateState } from "../hooks/useDesktopUpdateState";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
 import { Button } from "../components/ui/button";
@@ -37,6 +38,14 @@ import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { updateSpeechToTextState, useSpeechToTextState } from "~/speechToText/speechToTextState";
 import { UpstreamSyncSection } from "~/components/UpstreamSyncSection";
+import {
+  formatDesktopUpdateByteSize,
+  getDesktopUpdateReleaseNotesSnippet,
+  getDesktopUpdateSettingsDescription,
+  getDesktopUpdateStatusSummary,
+  getDesktopUpdateVersion,
+  resolveDesktopUpdateButtonAction,
+} from "~/components/desktopUpdate.logic";
 
 function formatSpeechModelFamily(family: string) {
   return family === "whisper-ggml"
@@ -97,6 +106,10 @@ function SettingsRouteView() {
   const { loading: speechToTextLoading, state: speechToTextState } = useSpeechToTextState();
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
+  const [desktopUpdateActionBusy, setDesktopUpdateActionBusy] = useState<
+    "check" | "download" | "install" | null
+  >(null);
+  const [desktopUpdateActionError, setDesktopUpdateActionError] = useState<string | null>(null);
   const [speechToTextActionError, setSpeechToTextActionError] = useState<string | null>(null);
   const [speechToTextBusyKey, setSpeechToTextBusyKey] = useState<string | null>(null);
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
@@ -118,6 +131,25 @@ function SettingsRouteView() {
   const speechToTextCatalog = speechToTextState?.catalog ?? [];
   const activeSpeechDownload = speechToTextState?.activeDownload ?? null;
   const speechToTextSettings = speechToTextState?.settings ?? null;
+  const {
+    state: desktopUpdateState,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+  } = useDesktopUpdateState();
+  const desktopUpdateVersion = getDesktopUpdateVersion(desktopUpdateState);
+  const desktopUpdateStatusSummary = getDesktopUpdateStatusSummary(desktopUpdateState);
+  const desktopUpdateSettingsDescription = getDesktopUpdateSettingsDescription(desktopUpdateState);
+  const desktopUpdateReleaseNotesSnippet = getDesktopUpdateReleaseNotesSnippet(
+    desktopUpdateState,
+    320,
+  );
+  const desktopUpdateButtonAction = desktopUpdateState
+    ? resolveDesktopUpdateButtonAction(desktopUpdateState)
+    : "none";
+  const desktopUpdateSizeLabel = formatDesktopUpdateByteSize(
+    desktopUpdateState?.availableSizeBytes ?? null,
+  );
   const runtimeStatusLabel =
     speechToTextState?.runtimeStatus === "ready"
       ? "Ready"
@@ -193,6 +225,55 @@ function SettingsRouteView() {
         setIsOpeningKeybindings(false);
       });
   }, [availableEditors, keybindingsConfigPath]);
+
+  const runDesktopUpdateAction = useCallback(
+    async (
+      busyKey: "check" | "download" | "install",
+      action: () => Promise<unknown>,
+      fallbackErrorMessage: string,
+    ) => {
+      setDesktopUpdateActionError(null);
+      setDesktopUpdateActionBusy(busyKey);
+      try {
+        await action();
+      } catch (error) {
+        setDesktopUpdateActionError(error instanceof Error ? error.message : fallbackErrorMessage);
+      } finally {
+        setDesktopUpdateActionBusy(null);
+      }
+    },
+    [],
+  );
+
+  const handleCheckForUpdates = useCallback(() => {
+    void runDesktopUpdateAction(
+      "check",
+      async () => {
+        await checkForUpdates();
+      },
+      "Unable to check for updates.",
+    );
+  }, [checkForUpdates, runDesktopUpdateAction]);
+
+  const handleDownloadUpdate = useCallback(() => {
+    void runDesktopUpdateAction(
+      "download",
+      async () => {
+        await downloadUpdate();
+      },
+      "Unable to download the update.",
+    );
+  }, [downloadUpdate, runDesktopUpdateAction]);
+
+  const handleInstallUpdate = useCallback(() => {
+    void runDesktopUpdateAction(
+      "install",
+      async () => {
+        await installUpdate();
+      },
+      "Unable to install the update.",
+    );
+  }, [installUpdate, runDesktopUpdateAction]);
 
   const runSpeechToTextAction = useCallback(
     async (busyKey: string, action: () => Promise<SpeechToTextState>) => {
@@ -1389,14 +1470,90 @@ function SettingsRouteView() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Version</p>
-                  <p className="text-xs text-muted-foreground">
-                    Current version of the application.
-                  </p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Version</p>
+                    <p className="text-xs text-muted-foreground">
+                      Current version of the application.
+                    </p>
+                  </div>
+                  <code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>
                 </div>
-                <code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>
+
+                <div className="rounded-lg border border-border bg-background px-3 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">Updates</p>
+                        {desktopUpdateVersion ? (
+                          <code className="text-[11px] font-medium text-muted-foreground">
+                            {desktopUpdateVersion}
+                          </code>
+                        ) : null}
+                        {desktopUpdateSizeLabel ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            {desktopUpdateSizeLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-foreground/90">{desktopUpdateStatusSummary}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {desktopUpdateSettingsDescription}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={
+                          desktopUpdateState?.enabled !== true || desktopUpdateActionBusy !== null
+                        }
+                        onClick={handleCheckForUpdates}
+                      >
+                        {desktopUpdateActionBusy === "check" ? "Checking..." : "Check for updates"}
+                      </Button>
+
+                      {desktopUpdateButtonAction === "download" ? (
+                        <Button
+                          size="xs"
+                          disabled={desktopUpdateActionBusy !== null}
+                          onClick={handleDownloadUpdate}
+                        >
+                          {desktopUpdateActionBusy === "download"
+                            ? "Downloading..."
+                            : "Download update"}
+                        </Button>
+                      ) : null}
+
+                      {desktopUpdateButtonAction === "install" ? (
+                        <Button
+                          size="xs"
+                          disabled={desktopUpdateActionBusy !== null}
+                          onClick={handleInstallUpdate}
+                        >
+                          {desktopUpdateActionBusy === "install" ? "Installing..." : "Install now"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {desktopUpdateReleaseNotesSnippet ? (
+                    <div className="mt-3 rounded-md border border-border/70 bg-card px-3 py-2">
+                      <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                        Release notes
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {desktopUpdateReleaseNotesSnippet}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {desktopUpdateActionError ? (
+                    <p className="mt-3 text-xs text-destructive">{desktopUpdateActionError}</p>
+                  ) : null}
+                </div>
               </div>
             </section>
           </div>

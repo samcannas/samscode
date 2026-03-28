@@ -23,14 +23,18 @@ import type {
   DesktopUpdateActionResult,
   DesktopUpdateState,
 } from "@samscode/contracts";
-import { autoUpdater } from "electron-updater";
+import { autoUpdater, type UpdateDownloadedEvent, type UpdateInfo } from "electron-updater";
 
 import type { ContextMenuItem } from "@samscode/contracts";
 import { NetService } from "@samscode/shared/Net";
 import { RotatingFileSink } from "@samscode/shared/logging";
 import { showDesktopConfirmDialog } from "./confirmDialog";
 import { syncShellEnvironment } from "./syncShellEnvironment";
-import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
+import {
+  getAutoUpdateDisabledReason,
+  resolveDesktopUpdateMetadata,
+  shouldBroadcastDownloadProgress,
+} from "./updateState";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -41,8 +45,14 @@ import {
   reduceDesktopUpdateStateOnDownloadStart,
   reduceDesktopUpdateStateOnInstallFailure,
   reduceDesktopUpdateStateOnNoUpdate,
+  reduceDesktopUpdateStateOnPendingInstallHintRestored,
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
+import {
+  clearPersistedDesktopUpdateHint,
+  readPersistedDesktopUpdateHint,
+  writePersistedDesktopUpdateHint,
+} from "./updatePersistence";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
 
 syncShellEnvironment();
@@ -55,6 +65,7 @@ const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
+const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const BASE_DIR = process.env.SAMSCODE_HOME?.trim() || Path.join(OS.homedir(), ".samscode");
@@ -68,6 +79,7 @@ const USER_DATA_DIR_NAME = isDevelopment ? "samscode-dev" : "samscode";
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
 const LOG_DIR = Path.join(STATE_DIR, "logs");
+const DESKTOP_UPDATE_HINT_PATH = Path.join(STATE_DIR, "desktop-update-hint.json");
 const LOG_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const LOG_FILE_MAX_FILES = 10;
 const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
@@ -375,6 +387,33 @@ function resolveAboutCommitHash(): string | null {
   aboutCommitHashCache = resolveEmbeddedCommitHash();
 
   return aboutCommitHashCache;
+}
+
+function restorePersistedDesktopUpdateHint(): void {
+  const hint = readPersistedDesktopUpdateHint(DESKTOP_UPDATE_HINT_PATH);
+  if (!hint) {
+    return;
+  }
+
+  if (hint.version === app.getVersion()) {
+    clearPersistedDesktopUpdateHint(DESKTOP_UPDATE_HINT_PATH);
+    return;
+  }
+
+  setUpdateState(
+    reduceDesktopUpdateStateOnPendingInstallHintRestored(updateState, {
+      version: hint.version,
+      releaseName: hint.releaseName,
+      releaseNotes: hint.releaseNotes,
+      availableSizeBytes: hint.availableSizeBytes,
+      downloadedAt: hint.downloadedAt,
+    }),
+  );
+  console.info(`[desktop-updater] Restored downloaded update hint for ${hint.version}.`);
+}
+
+function clearPersistedDesktopUpdateHintState(): void {
+  clearPersistedDesktopUpdateHint(DESKTOP_UPDATE_HINT_PATH);
 }
 
 function resolveBackendEntry(): string {
@@ -742,13 +781,13 @@ function shouldEnableAutoUpdates(): boolean {
   );
 }
 
-async function checkForUpdates(reason: string): Promise<void> {
-  if (isQuitting || !updaterConfigured || updateCheckInFlight) return;
+async function checkForUpdates(reason: string): Promise<DesktopUpdateState> {
+  if (isQuitting || !updaterConfigured || updateCheckInFlight) return updateState;
   if (updateState.status === "downloading" || updateState.status === "downloaded") {
     console.info(
       `[desktop-updater] Skipping update check (${reason}) while status=${updateState.status}.`,
     );
-    return;
+    return updateState;
   }
   updateCheckInFlight = true;
   setUpdateState(reduceDesktopUpdateStateOnCheckStart(updateState, new Date().toISOString()));
@@ -756,12 +795,14 @@ async function checkForUpdates(reason: string): Promise<void> {
 
   try {
     await autoUpdater.checkForUpdates();
+    return updateState;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     setUpdateState(
       reduceDesktopUpdateStateOnCheckFailure(updateState, message, new Date().toISOString()),
     );
     console.error(`[desktop-updater] Failed to check for updates: ${message}`);
+    return updateState;
   } finally {
     updateCheckInFlight = false;
   }
@@ -811,15 +852,26 @@ async function installDownloadedUpdate(): Promise<{ accepted: boolean; completed
 
 function configureAutoUpdater(): void {
   const enabled = shouldEnableAutoUpdates();
+  const disabledReason = enabled
+    ? null
+    : getAutoUpdateDisabledReason({
+        isDevelopment,
+        isPackaged: app.isPackaged,
+        platform: process.platform,
+        appImage: process.env.APPIMAGE,
+        disabledByEnv: process.env.SAMSCODE_DISABLE_AUTO_UPDATE === "1",
+      });
   setUpdateState({
     ...createInitialDesktopUpdateState(app.getVersion(), desktopRuntimeInfo),
     enabled,
     status: enabled ? "idle" : "disabled",
+    message: disabledReason,
   });
   if (!enabled) {
     return;
   }
   updaterConfigured = true;
+  restorePersistedDesktopUpdateHint();
 
   const githubToken =
     process.env.SAMSCODE_DESKTOP_UPDATE_GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
@@ -857,17 +909,21 @@ function configureAutoUpdater(): void {
     console.info("[desktop-updater] Looking for updates...");
   });
   autoUpdater.on("update-available", (info) => {
+    const metadata = resolveDesktopUpdateMetadata(info as UpdateInfo);
+    if (
+      updateState.pendingInstallVersion &&
+      updateState.pendingInstallVersion !== metadata.version
+    ) {
+      clearPersistedDesktopUpdateHintState();
+    }
     setUpdateState(
-      reduceDesktopUpdateStateOnUpdateAvailable(
-        updateState,
-        info.version,
-        new Date().toISOString(),
-      ),
+      reduceDesktopUpdateStateOnUpdateAvailable(updateState, metadata, new Date().toISOString()),
     );
     lastLoggedDownloadMilestone = -1;
-    console.info(`[desktop-updater] Update available: ${info.version}`);
+    console.info(`[desktop-updater] Update available: ${metadata.version}`);
   });
   autoUpdater.on("update-not-available", () => {
+    clearPersistedDesktopUpdateHintState();
     setUpdateState(reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString()));
     lastLoggedDownloadMilestone = -1;
     console.info("[desktop-updater] No updates available.");
@@ -901,16 +957,32 @@ function configureAutoUpdater(): void {
     }
   });
   autoUpdater.on("update-downloaded", (info) => {
-    setUpdateState(reduceDesktopUpdateStateOnDownloadComplete(updateState, info.version));
-    console.info(`[desktop-updater] Update downloaded: ${info.version}`);
+    const metadata = resolveDesktopUpdateMetadata(info as UpdateDownloadedEvent);
+    const downloadedAt = new Date().toISOString();
+    try {
+      writePersistedDesktopUpdateHint(DESKTOP_UPDATE_HINT_PATH, {
+        version: metadata.version,
+        releaseName: metadata.releaseName,
+        releaseNotes: metadata.releaseNotes,
+        availableSizeBytes: metadata.availableSizeBytes,
+        downloadedAt,
+      });
+    } catch (error) {
+      console.error(
+        `[desktop-updater] Failed to persist downloaded update hint: ${formatErrorMessage(error)}`,
+      );
+    }
+    setUpdateState(reduceDesktopUpdateStateOnDownloadComplete(updateState, metadata, downloadedAt));
+    console.info(`[desktop-updater] Update downloaded: ${metadata.version}`);
   });
 
   clearUpdatePollTimer();
 
+  const startupDelayMs = updateState.pendingInstallVersion ? 1_000 : AUTO_UPDATE_STARTUP_DELAY_MS;
   updateStartupTimer = setTimeout(() => {
     updateStartupTimer = null;
     void checkForUpdates("startup");
-  }, AUTO_UPDATE_STARTUP_DELAY_MS);
+  }, startupDelayMs);
   updateStartupTimer.unref();
 
   updatePollTimer = setInterval(() => {
@@ -1277,6 +1349,9 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
+
+  ipcMain.removeHandler(UPDATE_CHECK_CHANNEL);
+  ipcMain.handle(UPDATE_CHECK_CHANNEL, async () => checkForUpdates("renderer"));
 
   ipcMain.removeHandler(UPDATE_DOWNLOAD_CHANNEL);
   ipcMain.handle(UPDATE_DOWNLOAD_CHANNEL, async () => {
