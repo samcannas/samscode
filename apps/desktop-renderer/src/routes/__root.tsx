@@ -24,6 +24,7 @@ import { onServerConfigUpdated, onServerWelcome } from "../wsNativeApi";
 import { providerQueryKeys } from "../lib/providerReactQuery";
 import { projectQueryKeys } from "../lib/projectReactQuery";
 import { agentQueryKeys } from "../lib/agentReactQuery";
+import { skillQueryKeys } from "../lib/skillReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
 
 export const Route = createRootRouteWithContext<{
@@ -198,6 +199,7 @@ function EventRouter() {
           // in sync after files are created, deleted, or restored during this turn.
           void queryClient.invalidateQueries({ queryKey: projectQueryKeys.all });
           void queryClient.invalidateQueries({ queryKey: agentQueryKeys.all });
+          void queryClient.invalidateQueries({ queryKey: skillQueryKeys.all });
         }
         void syncSnapshot();
       },

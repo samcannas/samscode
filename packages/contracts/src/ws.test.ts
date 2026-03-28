@@ -85,6 +85,21 @@ it.effect("accepts speech-to-text session start requests", () =>
   }),
 );
 
+it.effect("accepts skills.buildPrompt requests", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWebSocketRequest({
+      id: "req-skill-1",
+      body: {
+        _tag: WS_METHODS.skillsBuildPrompt,
+        provider: "codex",
+        prompt: "Refresh the landing page",
+        skillIds: ["frontend-design"],
+      },
+    });
+    assert.strictEqual(parsed.body._tag, WS_METHODS.skillsBuildPrompt);
+  }),
+);
+
 it.effect("accepts typed websocket push envelopes with sequence", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeWsResponse({

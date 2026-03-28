@@ -39,6 +39,12 @@ import { OpenInEditorInput } from "./editor";
 import { ServerConfigUpdatedPayload } from "./server";
 import { AgentCatalogListInput, AgentInstallInput, AgentUninstallInput } from "./agents";
 import {
+  SkillCatalogListInput,
+  SkillInstallInput,
+  SkillPromptBuildInput,
+  SkillUninstallInput,
+} from "./skills";
+import {
   SpeechToTextAppendAudioBatchInput,
   SpeechToTextCancelSessionInput,
   SpeechToTextDeleteModelInput,
@@ -71,6 +77,10 @@ export const WS_METHODS = {
   agentsListCatalog: "agents.listCatalog",
   agentsInstall: "agents.install",
   agentsUninstall: "agents.uninstall",
+  skillsListCatalog: "skills.listCatalog",
+  skillsInstall: "skills.install",
+  skillsUninstall: "skills.uninstall",
+  skillsBuildPrompt: "skills.buildPrompt",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -154,6 +164,10 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.agentsListCatalog, AgentCatalogListInput),
   tagRequestBody(WS_METHODS.agentsInstall, AgentInstallInput),
   tagRequestBody(WS_METHODS.agentsUninstall, AgentUninstallInput),
+  tagRequestBody(WS_METHODS.skillsListCatalog, SkillCatalogListInput),
+  tagRequestBody(WS_METHODS.skillsInstall, SkillInstallInput),
+  tagRequestBody(WS_METHODS.skillsUninstall, SkillUninstallInput),
+  tagRequestBody(WS_METHODS.skillsBuildPrompt, SkillPromptBuildInput),
 
   // Shell methods
   tagRequestBody(WS_METHODS.shellOpenInEditor, OpenInEditorInput),

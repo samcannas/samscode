@@ -495,8 +495,7 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Models</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Save additional provider model slugs so they appear in the chat model picker and
-                  `/model` command suggestions.
+                  Save additional provider model slugs so they appear in the chat model picker.
                 </p>
               </div>
 

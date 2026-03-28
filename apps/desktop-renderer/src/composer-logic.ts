@@ -1,8 +1,8 @@
+import type { ComposerInlineEntityDefinition } from "./composerInlineEntities";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-export type ComposerTriggerKind = "agent" | "slash-command" | "slash-model";
-export type ComposerSlashCommand = "model" | "plan" | "default";
+export type ComposerTriggerKind = "agent" | "skill";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -11,9 +11,8 @@ export interface ComposerTrigger {
   rangeEnd: number;
 }
 
-const SLASH_COMMANDS: readonly ComposerSlashCommand[] = ["model", "plan", "default"];
 const isInlineTokenSegment = (
-  segment: { type: "text"; text: string } | { type: "mention" } | { type: "terminal-context" },
+  segment: { type: "text"; text: string } | { type: "entity" } | { type: "terminal-context" },
 ): boolean => segment.type !== "text";
 
 function clampCursor(text: string, cursor: number): number {
@@ -39,13 +38,17 @@ function tokenStartForCursor(text: string, cursor: number): number {
   return index + 1;
 }
 
+function inlineEntityKey(entity: ComposerInlineEntityDefinition): string {
+  return `${entity.kind}:${entity.id}`;
+}
+
 export function expandCollapsedComposerCursor(
   text: string,
   cursorInput: number,
-  mentionAgentIds: ReadonlyArray<string> = [],
+  inlineEntities: ReadonlyArray<ComposerInlineEntityDefinition> = [],
 ): number {
   const collapsedCursor = clampCursor(text, cursorInput);
-  const segments = splitPromptIntoComposerSegments(text, [], mentionAgentIds);
+  const segments = splitPromptIntoComposerSegments(text, [], inlineEntities);
   if (segments.length === 0) {
     return collapsedCursor;
   }
@@ -54,8 +57,9 @@ export function expandCollapsedComposerCursor(
   let expandedCursor = 0;
 
   for (const segment of segments) {
-    if (segment.type === "mention") {
-      const expandedLength = segment.agentId.length + 1;
+    if (segment.type === "entity") {
+      const prefix = segment.entityKind === "agent" ? "@" : "/";
+      const expandedLength = segment.entityId.length + prefix.length;
       if (remaining <= 1) {
         return expandedCursor + (remaining === 0 ? 0 : expandedLength);
       }
@@ -84,7 +88,7 @@ export function expandCollapsedComposerCursor(
 }
 
 function collapsedSegmentLength(
-  segment: { type: "text"; text: string } | { type: "mention" } | { type: "terminal-context" },
+  segment: { type: "text"; text: string } | { type: "entity" } | { type: "terminal-context" },
 ): number {
   if (segment.type === "text") {
     return segment.text.length;
@@ -94,7 +98,7 @@ function collapsedSegmentLength(
 
 function clampCollapsedComposerCursorForSegments(
   segments: ReadonlyArray<
-    { type: "text"; text: string } | { type: "mention" } | { type: "terminal-context" }
+    { type: "text"; text: string } | { type: "entity" } | { type: "terminal-context" }
   >,
   cursorInput: number,
 ): number {
@@ -111,10 +115,10 @@ function clampCollapsedComposerCursorForSegments(
 export function clampCollapsedComposerCursor(
   text: string,
   cursorInput: number,
-  mentionAgentIds: ReadonlyArray<string> = [],
+  inlineEntities: ReadonlyArray<ComposerInlineEntityDefinition> = [],
 ): number {
   return clampCollapsedComposerCursorForSegments(
-    splitPromptIntoComposerSegments(text, [], mentionAgentIds),
+    splitPromptIntoComposerSegments(text, [], inlineEntities),
     cursorInput,
   );
 }
@@ -122,10 +126,10 @@ export function clampCollapsedComposerCursor(
 export function collapseExpandedComposerCursor(
   text: string,
   cursorInput: number,
-  mentionAgentIds: ReadonlyArray<string> = [],
+  inlineEntities: ReadonlyArray<ComposerInlineEntityDefinition> = [],
 ): number {
   const expandedCursor = clampCursor(text, cursorInput);
-  const segments = splitPromptIntoComposerSegments(text, [], mentionAgentIds);
+  const segments = splitPromptIntoComposerSegments(text, [], inlineEntities);
   if (segments.length === 0) {
     return expandedCursor;
   }
@@ -134,8 +138,9 @@ export function collapseExpandedComposerCursor(
   let collapsedCursor = 0;
 
   for (const segment of segments) {
-    if (segment.type === "mention") {
-      const expandedLength = segment.agentId.length + 1;
+    if (segment.type === "entity") {
+      const prefix = segment.entityKind === "agent" ? "@" : "/";
+      const expandedLength = segment.entityId.length + prefix.length;
       if (remaining === 0) {
         return collapsedCursor;
       }
@@ -170,9 +175,9 @@ export function isCollapsedCursorAdjacentToInlineToken(
   text: string,
   cursorInput: number,
   direction: "left" | "right",
-  mentionAgentIds: ReadonlyArray<string> = [],
+  inlineEntities: ReadonlyArray<ComposerInlineEntityDefinition> = [],
 ): boolean {
-  const segments = splitPromptIntoComposerSegments(text, [], mentionAgentIds);
+  const segments = splitPromptIntoComposerSegments(text, [], inlineEntities);
   if (!segments.some(isInlineTokenSegment)) {
     return false;
   }
@@ -197,69 +202,40 @@ export function isCollapsedCursorAdjacentToInlineToken(
 
 export const isCollapsedCursorAdjacentToMention = isCollapsedCursorAdjacentToInlineToken;
 
-export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
+export function detectComposerTrigger(
+  text: string,
+  cursorInput: number,
+  _inlineEntities: ReadonlyArray<ComposerInlineEntityDefinition> = [],
+): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
-  const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-  const linePrefix = text.slice(lineStart, cursor);
-
-  if (linePrefix.startsWith("/")) {
-    const commandMatch = /^\/(\S*)$/.exec(linePrefix);
-    if (commandMatch) {
-      const commandQuery = commandMatch[1] ?? "";
-      if (commandQuery.toLowerCase() === "model") {
-        return {
-          kind: "slash-model",
-          query: "",
-          rangeStart: lineStart,
-          rangeEnd: cursor,
-        };
-      }
-      if (SLASH_COMMANDS.some((command) => command.startsWith(commandQuery.toLowerCase()))) {
-        return {
-          kind: "slash-command",
-          query: commandQuery,
-          rangeStart: lineStart,
-          rangeEnd: cursor,
-        };
-      }
-      return null;
-    }
-
-    const modelMatch = /^\/model(?:\s+(.*))?$/.exec(linePrefix);
-    if (modelMatch) {
-      return {
-        kind: "slash-model",
-        query: (modelMatch[1] ?? "").trim(),
-        rangeStart: lineStart,
-        rangeEnd: cursor,
-      };
-    }
-  }
-
   const tokenStart = tokenStartForCursor(text, cursor);
   const token = text.slice(tokenStart, cursor);
-  if (!token.startsWith("@")) {
+  if (token.length === 0) {
     return null;
   }
 
-  return {
-    kind: "agent",
-    query: token.slice(1),
-    rangeStart: tokenStart,
-    rangeEnd: cursor,
-  };
-}
-
-export function parseStandaloneComposerSlashCommand(
-  text: string,
-): Exclude<ComposerSlashCommand, "model"> | null {
-  const match = /^\/(plan|default)\s*$/i.exec(text.trim());
-  if (!match) {
-    return null;
+  if (token.startsWith("@")) {
+    return {
+      kind: "agent",
+      query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
   }
-  const command = match[1]?.toLowerCase();
-  if (command === "plan") return "plan";
-  return "default";
+
+  if (token.startsWith("/")) {
+    if (token.slice(1).includes("/")) {
+      return null;
+    }
+    return {
+      kind: "skill",
+      query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
+  }
+
+  return null;
 }
 
 export function replaceTextRange(
@@ -272,4 +248,16 @@ export function replaceTextRange(
   const safeEnd = Math.max(safeStart, Math.min(text.length, rangeEnd));
   const nextText = `${text.slice(0, safeStart)}${replacement}${text.slice(safeEnd)}`;
   return { text: nextText, cursor: safeStart + replacement.length };
+}
+
+export function inlineEntityDefinitionListChanged(
+  previous: ReadonlyArray<ComposerInlineEntityDefinition>,
+  next: ReadonlyArray<ComposerInlineEntityDefinition>,
+): boolean {
+  if (previous.length !== next.length) {
+    return true;
+  }
+  return previous.some(
+    (entity, index) => inlineEntityKey(entity) !== inlineEntityKey(next[index]!),
+  );
 }

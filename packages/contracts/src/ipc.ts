@@ -27,6 +27,16 @@ import type {
   AgentUninstallResult,
 } from "./agents";
 import type {
+  SkillCatalogListInput,
+  SkillCatalogListResult,
+  SkillInstallInput,
+  SkillInstallResult,
+  SkillPromptBuildInput,
+  SkillPromptBuildResult,
+  SkillUninstallInput,
+  SkillUninstallResult,
+} from "./skills";
+import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -163,6 +173,12 @@ export interface NativeApi {
     listCatalog: (input: AgentCatalogListInput) => Promise<AgentCatalogListResult>;
     install: (input: AgentInstallInput) => Promise<AgentInstallResult>;
     uninstall: (input: AgentUninstallInput) => Promise<AgentUninstallResult>;
+  };
+  skills: {
+    listCatalog: (input: SkillCatalogListInput) => Promise<SkillCatalogListResult>;
+    install: (input: SkillInstallInput) => Promise<SkillInstallResult>;
+    uninstall: (input: SkillUninstallInput) => Promise<SkillUninstallResult>;
+    buildPrompt: (input: SkillPromptBuildInput) => Promise<SkillPromptBuildResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;

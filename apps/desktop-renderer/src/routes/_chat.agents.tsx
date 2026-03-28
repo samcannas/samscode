@@ -1,8 +1,4 @@
-import {
-  type AgentCatalogEntry,
-  type AgentInstallTarget,
-  type ThreadId,
-} from "@samscode/contracts";
+import { type AgentInstallTarget, type ThreadId } from "@samscode/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -20,58 +16,20 @@ import {
 } from "~/components/ui/select";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { toastManager } from "~/components/ui/toast";
+import {
+  affectedProvidersForTarget,
+  HARNESS_TARGET_LABELS,
+  installStateSummary,
+  isTargetInstalled,
+  supportedTargetsForProviders,
+} from "~/lib/harnessInstallTargets";
 import { agentCatalogQueryOptions, agentQueryKeys } from "~/lib/agentReactQuery";
 import { newCommandId } from "~/lib/utils";
 import { ensureNativeApi } from "~/nativeApi";
 
-const TARGET_LABELS: Record<AgentInstallTarget, string> = {
-  all: "Both harnesses",
-  codex: "Codex",
-  claudeAgent: "Claude Code",
-};
-
 function normalizeCodexHomePath(value: string): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function supportedTargetsForEntry(entry: AgentCatalogEntry): AgentInstallTarget[] {
-  const supportsCodex = entry.supports.includes("codex");
-  const supportsClaude = entry.supports.includes("claudeAgent");
-  if (supportsCodex && supportsClaude) {
-    return ["all", "codex", "claudeAgent"];
-  }
-  if (supportsCodex) {
-    return ["codex"];
-  }
-  return ["claudeAgent"];
-}
-
-function installedTargetSummary(entry: AgentCatalogEntry): string {
-  if (entry.installState.codex && entry.installState.claudeAgent) {
-    return "Installed everywhere";
-  }
-  if (entry.installState.codex) {
-    return "Installed for Codex";
-  }
-  if (entry.installState.claudeAgent) {
-    return "Installed for Claude Code";
-  }
-  return "Not installed";
-}
-
-function isTargetInstalled(entry: AgentCatalogEntry, target: AgentInstallTarget): boolean {
-  if (target === "all") {
-    return entry.installState.codex && entry.installState.claudeAgent;
-  }
-  return entry.installState[target];
-}
-
-function affectedProvidersForTarget(target: AgentInstallTarget): Array<"codex" | "claudeAgent"> {
-  if (target === "all") {
-    return ["codex", "claudeAgent"];
-  }
-  return [target];
 }
 
 async function maybeRestartAffectedSessions(input: {
@@ -154,7 +112,7 @@ function AgentsRouteView() {
       toastManager.add({
         type: "success",
         title: "Agent installed",
-        description: `Installed for ${TARGET_LABELS[input.target].toLowerCase()}.`,
+        description: `Installed for ${HARNESS_TARGET_LABELS[input.target].toLowerCase()}.`,
       });
       await maybeRestartAffectedSessions({
         target: input.target,
@@ -185,7 +143,7 @@ function AgentsRouteView() {
       toastManager.add({
         type: "success",
         title: "Agent removed",
-        description: `Removed from ${TARGET_LABELS[input.target].toLowerCase()}.`,
+        description: `Removed from ${HARNESS_TARGET_LABELS[input.target].toLowerCase()}.`,
       });
       await maybeRestartAffectedSessions({
         target: input.target,
@@ -267,9 +225,12 @@ function AgentsRouteView() {
 
             <section className="grid gap-4 lg:grid-cols-2">
               {filteredEntries.map((entry) => {
-                const supportedTargets = supportedTargetsForEntry(entry);
+                const supportedTargets = supportedTargetsForProviders(entry.supports);
                 const selectedTarget = targetByAgentId[entry.id] ?? supportedTargets[0] ?? "all";
-                const selectedTargetInstalled = isTargetInstalled(entry, selectedTarget);
+                const selectedTargetInstalled = isTargetInstalled(
+                  entry.installState,
+                  selectedTarget,
+                );
                 const isBusy =
                   installMutation.isPending && installMutation.variables?.agentId === entry.id
                     ? true
@@ -314,7 +275,7 @@ function AgentsRouteView() {
                     </div>
 
                     <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-                      {installedTargetSummary(entry)}
+                      {installStateSummary(entry.installState)}
                     </div>
 
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -334,12 +295,12 @@ function AgentsRouteView() {
                           className="w-full sm:w-52"
                           aria-label={`Install target for ${entry.name}`}
                         >
-                          <SelectValue>{TARGET_LABELS[selectedTarget]}</SelectValue>
+                          <SelectValue>{HARNESS_TARGET_LABELS[selectedTarget]}</SelectValue>
                         </SelectTrigger>
                         <SelectPopup align="start">
                           {supportedTargets.map((target) => (
                             <SelectItem key={target} value={target}>
-                              {TARGET_LABELS[target]}
+                              {HARNESS_TARGET_LABELS[target]}
                             </SelectItem>
                           ))}
                         </SelectPopup>

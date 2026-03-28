@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   BotIcon,
+  BookCopyIcon,
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
@@ -277,6 +278,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnAgents = pathname === "/agents";
+  const isOnSkills = pathname === "/skills";
   const isOnSettings = pathname === "/settings";
   const { settings: appSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
@@ -1742,6 +1744,19 @@ export default function Sidebar() {
               size="sm"
               className={cn(
                 "gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+                isOnSkills && "bg-accent text-foreground",
+              )}
+              onClick={() => void navigate({ to: "/skills" })}
+            >
+              <BookCopyIcon className="size-3.5" />
+              <span className="text-xs">Skills</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className={cn(
+                "gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground",
                 isOnAgents && "bg-accent text-foreground",
               )}
               onClick={() => void navigate({ to: "/agents" })}
@@ -1763,7 +1778,7 @@ export default function Sidebar() {
               <span className="text-xs">Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          {(isOnAgents || isOnSettings) && (
+          {(isOnSkills || isOnAgents || isOnSettings) && (
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="sm"

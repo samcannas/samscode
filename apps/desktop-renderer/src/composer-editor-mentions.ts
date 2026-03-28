@@ -1,3 +1,7 @@
+import type {
+  ComposerInlineEntityDefinition,
+  ComposerInlineEntityKind,
+} from "./composerInlineEntities";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -9,15 +13,16 @@ export type ComposerPromptSegment =
       text: string;
     }
   | {
-      type: "mention";
-      agentId: string;
+      type: "entity";
+      entityKind: ComposerInlineEntityKind;
+      entityId: string;
     }
   | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
     };
 
-const MENTION_TOKEN_REGEX = /(^|\s)@([a-z0-9][a-z0-9-]*)(?=\s)/gi;
+const INLINE_ENTITY_TOKEN_REGEX = /(^|\s)([@/])([a-z0-9][a-z0-9-]*)(?=\s)/gi;
 
 function pushTextSegment(segments: ComposerPromptSegment[], text: string): void {
   if (!text) return;
@@ -31,7 +36,7 @@ function pushTextSegment(segments: ComposerPromptSegment[], text: string): void 
 
 function splitPromptTextIntoComposerSegments(
   text: string,
-  knownAgentIds: ReadonlySet<string>,
+  knownEntities: ReadonlyMap<string, ComposerInlineEntityDefinition>,
 ): ComposerPromptSegment[] {
   const segments: ComposerPromptSegment[] = [];
   if (!text) {
@@ -39,20 +44,26 @@ function splitPromptTextIntoComposerSegments(
   }
 
   let cursor = 0;
-  for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
-    const fullMatch = match[0];
+  for (const match of text.matchAll(INLINE_ENTITY_TOKEN_REGEX)) {
+    const fullMatch = match[0] ?? "";
     const prefix = match[1] ?? "";
-    const agentId = (match[2] ?? "").toLowerCase();
+    const sigil = match[2] ?? "";
+    const entityId = (match[3] ?? "").toLowerCase();
     const matchIndex = match.index ?? 0;
     const mentionStart = matchIndex + prefix.length;
     const mentionEnd = mentionStart + fullMatch.length - prefix.length;
+    const entity = knownEntities.get(`${sigil}${entityId}`);
 
     if (mentionStart > cursor) {
       pushTextSegment(segments, text.slice(cursor, mentionStart));
     }
 
-    if (agentId.length > 0 && knownAgentIds.has(agentId)) {
-      segments.push({ type: "mention", agentId });
+    if (entity) {
+      segments.push({
+        type: "entity",
+        entityKind: entity.kind,
+        entityId: entity.id,
+      });
     } else {
       pushTextSegment(segments, text.slice(mentionStart, mentionEnd));
     }
@@ -70,14 +81,19 @@ function splitPromptTextIntoComposerSegments(
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
-  knownAgentIds: ReadonlyArray<string> = [],
+  inlineEntities: ReadonlyArray<ComposerInlineEntityDefinition> = [],
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
   }
 
   const segments: ComposerPromptSegment[] = [];
-  const knownAgentIdSet = new Set(knownAgentIds.map((agentId) => agentId.trim().toLowerCase()));
+  const knownEntities = new Map(
+    inlineEntities.map((entity) => [
+      `${entity.kind === "agent" ? "@" : "/"}${entity.id}`.toLowerCase(),
+      entity,
+    ]),
+  );
   let textCursor = 0;
   let terminalContextIndex = 0;
 
@@ -88,7 +104,7 @@ export function splitPromptIntoComposerSegments(
 
     if (index > textCursor) {
       segments.push(
-        ...splitPromptTextIntoComposerSegments(prompt.slice(textCursor, index), knownAgentIdSet),
+        ...splitPromptTextIntoComposerSegments(prompt.slice(textCursor, index), knownEntities),
       );
     }
     segments.push({
@@ -100,9 +116,7 @@ export function splitPromptIntoComposerSegments(
   }
 
   if (textCursor < prompt.length) {
-    segments.push(
-      ...splitPromptTextIntoComposerSegments(prompt.slice(textCursor), knownAgentIdSet),
-    );
+    segments.push(...splitPromptTextIntoComposerSegments(prompt.slice(textCursor), knownEntities));
   }
 
   return segments;

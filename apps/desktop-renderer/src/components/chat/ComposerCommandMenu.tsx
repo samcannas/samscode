@@ -1,8 +1,8 @@
-import { type ModelSlug, type ProviderKind } from "@samscode/contracts";
 import { memo } from "react";
-import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
-import { BotIcon } from "lucide-react";
+import { BookCopyIcon, BotIcon } from "lucide-react";
+import { type ComposerTriggerKind } from "../../composer-logic";
 import type { ComposerAgentDefinition } from "~/agentMentions";
+import type { ComposerSkillDefinition } from "~/skillMentions";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Command, CommandItem, CommandList } from "../ui/command";
@@ -17,16 +17,8 @@ export type ComposerCommandItem =
     }
   | {
       id: string;
-      type: "slash-command";
-      command: ComposerSlashCommand;
-      label: string;
-      description: string;
-    }
-  | {
-      id: string;
-      type: "model";
-      provider: ProviderKind;
-      model: ModelSlug;
+      type: "skill";
+      skill: ComposerSkillDefinition;
       label: string;
       description: string;
     };
@@ -62,10 +54,12 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         {props.items.length === 0 && (
           <p className="px-3 py-2 text-muted-foreground/70 text-xs">
             {props.isLoading
-              ? "Loading installed agents..."
+              ? props.triggerKind === "agent"
+                ? "Loading installed agents..."
+                : "Loading installed skills..."
               : props.triggerKind === "agent"
                 ? "No matching installed agents."
-                : "No matching command."}
+                : "No matching installed skills."}
           </p>
         )}
       </div>
@@ -93,17 +87,17 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       }}
     >
       {props.item.type === "agent" ? <BotIcon className="size-4 text-muted-foreground/80" /> : null}
-      {props.item.type === "slash-command" ? (
-        <BotIcon className="size-4 text-muted-foreground/80" />
-      ) : null}
-      {props.item.type === "model" ? (
-        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-          model
-        </Badge>
+      {props.item.type === "skill" ? (
+        <BookCopyIcon className="size-4 text-muted-foreground/80" />
       ) : null}
       {props.item.type === "agent" ? (
         <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
           agent
+        </Badge>
+      ) : null}
+      {props.item.type === "skill" ? (
+        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+          skill
         </Badge>
       ) : null}
       <span className="flex min-w-0 items-center gap-1.5 truncate">

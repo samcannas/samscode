@@ -13,4 +13,5 @@ export * from "./orchestration";
 export * from "./editor";
 export * from "./project";
 export * from "./speechToText";
+export * from "./skills";
 export * from "./upstreamSync";

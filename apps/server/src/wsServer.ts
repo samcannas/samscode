@@ -80,6 +80,12 @@ import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@samscode/shared/schemaJson";
 import { installCatalogAgent, listAgentCatalog, uninstallCatalogAgent } from "./agentCatalog";
+import {
+  buildInstalledSkillPrompt,
+  installCatalogSkill,
+  listSkillCatalog,
+  uninstallCatalogSkill,
+} from "./skillCatalog";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -766,6 +772,72 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           catch: (cause) =>
             new RouteRequestError({
               message: `Failed to uninstall agent: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsListCatalog: {
+        return yield* Effect.tryPromise({
+          try: () =>
+            listSkillCatalog({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to list skill catalog: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsInstall: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () =>
+            installCatalogSkill({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+              skillId: body.skillId,
+              target: body.target,
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to install skill: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsUninstall: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () =>
+            uninstallCatalogSkill({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+              skillId: body.skillId,
+              target: body.target,
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to uninstall skill: ${String(cause)}`,
+            }),
+        });
+      }
+
+      case WS_METHODS.skillsBuildPrompt: {
+        const body = stripRequestTag(request.body);
+        return yield* Effect.tryPromise({
+          try: () =>
+            buildInstalledSkillPrompt({
+              cwd: serverConfig.cwd,
+              baseDir: serverConfig.baseDir,
+              provider: body.provider,
+              prompt: body.prompt,
+              skillIds: body.skillIds,
+            }),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to build skill prompt: ${String(cause)}`,
             }),
         });
       }

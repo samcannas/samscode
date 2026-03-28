@@ -173,6 +173,12 @@ export function createWsNativeApi(): NativeApi {
       install: (input) => transport.request(WS_METHODS.agentsInstall, input),
       uninstall: (input) => transport.request(WS_METHODS.agentsUninstall, input),
     },
+    skills: {
+      listCatalog: (input) => transport.request(WS_METHODS.skillsListCatalog, input),
+      install: (input) => transport.request(WS_METHODS.skillsInstall, input),
+      uninstall: (input) => transport.request(WS_METHODS.skillsUninstall, input),
+      buildPrompt: (input) => transport.request(WS_METHODS.skillsBuildPrompt, input),
+    },
     shell: {
       openInEditor: (cwd, editor) =>
         transport.request(WS_METHODS.shellOpenInEditor, { cwd, editor }),
