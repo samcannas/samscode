@@ -25,11 +25,11 @@ describe("desktop release helpers", () => {
     const asset = pickDesktopReleaseAsset(
       [
         {
-          name: "samscode-0.0.13-x64.dmg",
+          name: "samscode-0.1.0-x64.dmg",
           browser_download_url: "https://example.com/x64.dmg",
         },
         {
-          name: "samscode-0.0.13-arm64.dmg",
+          name: "samscode-0.1.0-arm64.dmg",
           browser_download_url: "https://example.com/arm64.dmg",
         },
       ],
@@ -45,11 +45,11 @@ describe("desktop release helpers", () => {
     const asset = pickDesktopReleaseAsset(
       [
         {
-          name: "samscode-0.0.13-x64.blockmap",
+          name: "samscode-0.1.0-x64.blockmap",
           browser_download_url: "https://example.com/latest.blockmap",
         },
         {
-          name: "samscode-0.0.13-x64.exe",
+          name: "samscode-0.1.0-x64.exe",
           browser_download_url: "https://example.com/latest.exe",
         },
       ],
@@ -62,22 +62,22 @@ describe("desktop release helpers", () => {
 
   it("renders the latest release page above the direct download link", () => {
     const summary = renderDesktopReleaseSummary({
-      currentVersion: "0.0.13",
+      currentVersion: "0.1.0",
       platformLabel: "Windows",
       releasesPageUrl: "https://github.com/samcannas/samscode/releases",
-      latestReleaseTag: "v0.0.13",
-      latestReleaseUrl: "https://github.com/samcannas/samscode/releases/tag/v0.0.13",
+      latestReleaseTag: "v0.1.0",
+      latestReleaseUrl: "https://github.com/samcannas/samscode/releases/tag/v0.1.0",
       directDownloadLabel: "Windows installer (.exe)",
       directDownloadUrl:
-        "https://github.com/samcannas/samscode/releases/download/v0.0.13/samscode.exe",
+        "https://github.com/samcannas/samscode/releases/download/v0.1.0/samscode.exe",
     });
 
-    expect(summary).toContain("Sam's Code helper 0.0.13");
+    expect(summary).toContain("Sam's Code helper 0.1.0");
     expect(summary).toContain(
-      "Release page: https://github.com/samcannas/samscode/releases/tag/v0.0.13",
+      "Release page: https://github.com/samcannas/samscode/releases/tag/v0.1.0",
     );
     expect(summary).toContain(
-      "Windows installer (.exe): https://github.com/samcannas/samscode/releases/download/v0.0.13/samscode.exe",
+      "Windows installer (.exe): https://github.com/samcannas/samscode/releases/download/v0.1.0/samscode.exe",
     );
   });
 });

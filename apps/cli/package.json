@@ -1,6 +1,6 @@
 {
   "name": "samscode",
-  "version": "0.0.13",
+  "version": "0.1.0",
   "description": "Helper CLI for Sam's Code desktop releases",
   "repository": {
     "type": "git",

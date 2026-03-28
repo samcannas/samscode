@@ -23,3 +23,11 @@ Sam's Code is a desktop app for coding agents, with first-class support for Code
 
 - This project is still early and may change quickly
 - Before finishing changes, run `bun fmt`, `bun lint`, and `bun typecheck`
+
+## Version Change
+
+- To bump the project's version, use:
+```
+node scripts/update-release-package-versions.ts X.Y.Z
+bun install --lockfile-only --ignore-scripts
+```
