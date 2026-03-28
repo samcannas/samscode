@@ -31,4 +31,4 @@ export interface ProjectionSnapshotQueryShape {
 export class ProjectionSnapshotQuery extends ServiceMap.Service<
   ProjectionSnapshotQuery,
   ProjectionSnapshotQueryShape
->()("samscode/orchestration/Services/ProjectionSnapshotQuery") {}
+>()("@samscode/server/orchestration/Services/ProjectionSnapshotQuery") {}

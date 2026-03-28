@@ -37,4 +37,4 @@ export interface ProviderCommandReactorShape {
 export class ProviderCommandReactor extends ServiceMap.Service<
   ProviderCommandReactor,
   ProviderCommandReactorShape
->()("samscode/orchestration/Services/ProviderCommandReactor") {}
+>()("@samscode/server/orchestration/Services/ProviderCommandReactor") {}

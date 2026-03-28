@@ -76,4 +76,4 @@ export interface ProjectionProjectRepositoryShape {
 export class ProjectionProjectRepository extends ServiceMap.Service<
   ProjectionProjectRepository,
   ProjectionProjectRepositoryShape
->()("samscode/persistence/Services/ProjectionProjects/ProjectionProjectRepository") {}
+>()("@samscode/server/persistence/Services/ProjectionProjects/ProjectionProjectRepository") {}

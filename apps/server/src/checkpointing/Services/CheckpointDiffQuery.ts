@@ -46,4 +46,4 @@ export interface CheckpointDiffQueryShape {
 export class CheckpointDiffQuery extends ServiceMap.Service<
   CheckpointDiffQuery,
   CheckpointDiffQueryShape
->()("samscode/checkpointing/Services/CheckpointDiffQuery") {}
+>()("@samscode/server/checkpointing/Services/CheckpointDiffQuery") {}

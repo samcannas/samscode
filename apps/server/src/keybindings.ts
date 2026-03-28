@@ -526,7 +526,7 @@ export interface KeybindingsShape {
  * Keybindings - Service tag for keybinding configuration operations.
  */
 export class Keybindings extends ServiceMap.Service<Keybindings, KeybindingsShape>()(
-  "samscode/keybindings",
+  "@samscode/server/keybindings",
 ) {}
 
 const makeKeybindings = Effect.gen(function* () {

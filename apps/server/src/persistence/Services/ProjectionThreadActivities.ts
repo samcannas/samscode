@@ -81,5 +81,5 @@ export class ProjectionThreadActivityRepository extends ServiceMap.Service<
   ProjectionThreadActivityRepository,
   ProjectionThreadActivityRepositoryShape
 >()(
-  "samscode/persistence/Services/ProjectionThreadActivities/ProjectionThreadActivityRepository",
+  "@samscode/server/persistence/Services/ProjectionThreadActivities/ProjectionThreadActivityRepository",
 ) {}

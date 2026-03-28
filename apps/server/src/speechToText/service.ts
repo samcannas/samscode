@@ -60,7 +60,7 @@ import { cleanupTranscriptWithLlm } from "./transcriptCleanup";
 import { createWhisperSidecarManager, resolveWhisperSidecarBinaryName } from "./whisperSidecar";
 
 export class SpeechToText extends ServiceMap.Service<SpeechToText, SpeechToTextShape>()(
-  "samscode/speechToText/service/SpeechToText",
+  "@samscode/server/speechToText/service/SpeechToText",
 ) {}
 
 interface AsyncMutex {

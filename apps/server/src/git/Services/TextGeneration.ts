@@ -152,5 +152,5 @@ export interface TextGenerationShape {
  * TextGeneration - Service tag for commit and PR text generation.
  */
 export class TextGeneration extends ServiceMap.Service<TextGeneration, TextGenerationShape>()(
-  "samscode/git/Services/TextGeneration",
+  "@samscode/server/git/Services/TextGeneration",
 ) {}

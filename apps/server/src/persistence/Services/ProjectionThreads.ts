@@ -58,4 +58,4 @@ export interface ProjectionThreadRepositoryShape {
 export class ProjectionThreadRepository extends ServiceMap.Service<
   ProjectionThreadRepository,
   ProjectionThreadRepositoryShape
->()("samscode/persistence/Services/ProjectionThreads/ProjectionThreadRepository") {}
+>()("@samscode/server/persistence/Services/ProjectionThreads/ProjectionThreadRepository") {}

@@ -38,5 +38,5 @@ export interface UpstreamSyncShape {
 }
 
 export class UpstreamSync extends ServiceMap.Service<UpstreamSync, UpstreamSyncShape>()(
-  "samscode/upstreamSync/Services/UpstreamSync",
+  "@samscode/server/upstreamSync/Services/UpstreamSync",
 ) {}

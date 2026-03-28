@@ -37,6 +37,6 @@ export interface ProviderAdapterRegistryShape {
 export class ProviderAdapterRegistry extends ServiceMap.Service<
   ProviderAdapterRegistry,
   ProviderAdapterRegistryShape
->()("samscode/provider/Services/ProviderAdapterRegistry") {}
+>()("@samscode/server/provider/Services/ProviderAdapterRegistry") {}
 
 // Dummy comment for workflow testing.

@@ -37,4 +37,6 @@ export interface ProviderRuntimeIngestionShape {
 export class ProviderRuntimeIngestionService extends ServiceMap.Service<
   ProviderRuntimeIngestionService,
   ProviderRuntimeIngestionShape
->()("samscode/orchestration/Services/ProviderRuntimeIngestion/ProviderRuntimeIngestionService") {}
+>()(
+  "@samscode/server/orchestration/Services/ProviderRuntimeIngestion/ProviderRuntimeIngestionService",
+) {}

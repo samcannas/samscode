@@ -44,4 +44,4 @@ export interface ProviderSessionDirectoryShape {
 export class ProviderSessionDirectory extends ServiceMap.Service<
   ProviderSessionDirectory,
   ProviderSessionDirectoryShape
->()("samscode/provider/Services/ProviderSessionDirectory") {}
+>()("@samscode/server/provider/Services/ProviderSessionDirectory") {}

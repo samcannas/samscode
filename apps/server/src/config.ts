@@ -71,7 +71,7 @@ export const deriveServerPaths = Effect.fn(function* (
  * ServerConfig - Service tag for server runtime configuration.
  */
 export class ServerConfig extends ServiceMap.Service<ServerConfig, ServerConfigShape>()(
-  "samscode/config/ServerConfig",
+  "@samscode/server/config/ServerConfig",
 ) {
   static readonly layerTest = (cwd: string, baseDirOrPrefix: string | { prefix: string }) =>
     Layer.effect(

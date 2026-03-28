@@ -77,4 +77,4 @@ export interface OrchestrationEngineShape {
 export class OrchestrationEngineService extends ServiceMap.Service<
   OrchestrationEngineService,
   OrchestrationEngineShape
->()("samscode/orchestration/Services/OrchestrationEngine/OrchestrationEngineService") {}
+>()("@samscode/server/orchestration/Services/OrchestrationEngine/OrchestrationEngineService") {}

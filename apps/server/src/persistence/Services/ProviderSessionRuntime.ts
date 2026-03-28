@@ -47,4 +47,6 @@ export interface ProviderSessionRuntimeRepositoryShape {
 export class ProviderSessionRuntimeRepository extends ServiceMap.Service<
   ProviderSessionRuntimeRepository,
   ProviderSessionRuntimeRepositoryShape
->()("samscode/persistence/Services/ProviderSessionRuntime/ProviderSessionRuntimeRepository") {}
+>()(
+  "@samscode/server/persistence/Services/ProviderSessionRuntime/ProviderSessionRuntimeRepository",
+) {}

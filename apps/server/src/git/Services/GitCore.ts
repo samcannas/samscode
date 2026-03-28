@@ -221,5 +221,5 @@ export interface GitCoreShape {
  * GitCore - Service tag for low-level Git repository operations.
  */
 export class GitCore extends ServiceMap.Service<GitCore, GitCoreShape>()(
-  "samscode/git/Services/GitCore",
+  "@samscode/server/git/Services/GitCore",
 ) {}

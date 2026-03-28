@@ -165,4 +165,4 @@ export interface ProjectionTurnRepositoryShape {
 export class ProjectionTurnRepository extends ServiceMap.Service<
   ProjectionTurnRepository,
   ProjectionTurnRepositoryShape
->()("samscode/persistence/Services/ProjectionTurns/ProjectionTurnRepository") {}
+>()("@samscode/server/persistence/Services/ProjectionTurns/ProjectionTurnRepository") {}

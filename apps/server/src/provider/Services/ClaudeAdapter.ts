@@ -26,5 +26,5 @@ export interface ClaudeAdapterShape extends ProviderAdapterShape<ProviderAdapter
  * ClaudeAdapter - Service tag for Claude Agent provider adapter operations.
  */
 export class ClaudeAdapter extends ServiceMap.Service<ClaudeAdapter, ClaudeAdapterShape>()(
-  "samscode/provider/Services/ClaudeAdapter",
+  "@samscode/server/provider/Services/ClaudeAdapter",
 ) {}

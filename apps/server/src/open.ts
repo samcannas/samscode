@@ -191,7 +191,7 @@ export interface OpenShape {
 /**
  * Open - Service tag for browser/editor launch operations.
  */
-export class Open extends ServiceMap.Service<Open, OpenShape>()("samscode/open") {}
+export class Open extends ServiceMap.Service<Open, OpenShape>()("@samscode/server/open") {}
 
 // ==============================
 // Implementations

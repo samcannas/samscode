@@ -54,5 +54,5 @@ export interface PtyAdapterShape {
  * PtyAdapter - Service tag for PTY process integration.
  */
 export class PtyAdapter extends ServiceMap.Service<PtyAdapter, PtyAdapterShape>()(
-  "samscode/terminal/Services/PTY/PtyAdapter",
+  "@samscode/server/terminal/Services/PTY/PtyAdapter",
 ) {}

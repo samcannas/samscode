@@ -114,5 +114,5 @@ export interface TerminalManagerShape {
  * TerminalManager - Service tag for terminal session orchestration.
  */
 export class TerminalManager extends ServiceMap.Service<TerminalManager, TerminalManagerShape>()(
-  "samscode/terminal/Services/Manager/TerminalManager",
+  "@samscode/server/terminal/Services/Manager/TerminalManager",
 ) {}

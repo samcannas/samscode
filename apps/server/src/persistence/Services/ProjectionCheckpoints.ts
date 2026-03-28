@@ -90,4 +90,4 @@ export interface ProjectionCheckpointRepositoryShape {
 export class ProjectionCheckpointRepository extends ServiceMap.Service<
   ProjectionCheckpointRepository,
   ProjectionCheckpointRepositoryShape
->()("samscode/persistence/Services/ProjectionCheckpoints/ProjectionCheckpointRepository") {}
+>()("@samscode/server/persistence/Services/ProjectionCheckpoints/ProjectionCheckpointRepository") {}
