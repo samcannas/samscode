@@ -455,6 +455,16 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     directories: {
       buildResources: "apps/desktop/resources",
     },
+    extraResources: [
+      {
+        from: "skills",
+        to: "skills",
+      },
+      {
+        from: "agents",
+        to: "agents",
+      },
+    ],
   };
   const publishConfig = resolveGitHubPublishConfig();
   if (publishConfig) {
@@ -608,6 +618,8 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop"), { recursive: true });
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop-renderer"), { recursive: true });
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/server"), { recursive: true });
+  yield* fs.makeDirectory(path.join(stageAppDir, "skills"), { recursive: true });
+  yield* fs.makeDirectory(path.join(stageAppDir, "agents"), { recursive: true });
 
   yield* Effect.log("[desktop-artifact] Staging release app...");
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
@@ -617,6 +629,8 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     path.join(stageAppDir, "apps/desktop-renderer/dist"),
   );
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
+  yield* fs.copy(path.join(repoRoot, "skills"), path.join(stageAppDir, "skills"));
+  yield* fs.copy(path.join(repoRoot, "agents"), path.join(stageAppDir, "agents"));
 
   yield* assertPlatformBuildResources(options.platform, stageResourcesDir, options.verbose);
 

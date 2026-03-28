@@ -388,6 +388,14 @@ function resolveBackendCwd(): string {
   return OS.homedir();
 }
 
+function resolveCatalogRoot(): string {
+  if (!app.isPackaged) {
+    return resolveAppRoot();
+  }
+
+  return process.resourcesPath;
+}
+
 function resolveDesktopStaticDir(): string | null {
   const appRoot = resolveAppRoot();
   const candidates = [Path.join(appRoot, "apps/desktop-renderer/dist")];
@@ -916,6 +924,7 @@ function backendEnv(): NodeJS.ProcessEnv {
     SAMSCODE_MODE: "desktop",
     SAMSCODE_PORT: String(backendPort),
     SAMSCODE_HOME: BASE_DIR,
+    SAMSCODE_CATALOG_ROOT: resolveCatalogRoot(),
     SAMSCODE_AUTH_TOKEN: backendAuthToken,
   };
 }

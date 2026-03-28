@@ -206,6 +206,36 @@ function resolveWorkspaceCatalogPath(cwd: string): string {
   return path.join(cwd, ...WORKSPACE_AGENT_CATALOG_RELATIVE_PATH);
 }
 
+function resolveBundledCatalogPath(): string | undefined {
+  const bundledCatalogRoot = process.env.SAMSCODE_CATALOG_ROOT?.trim();
+  if (!bundledCatalogRoot) {
+    return undefined;
+  }
+
+  return path.join(path.resolve(bundledCatalogRoot), ...WORKSPACE_AGENT_CATALOG_RELATIVE_PATH);
+}
+
+function resolveCatalogRoots(cwd: string, writableCatalogPath: string) {
+  const workspaceRoot = {
+    rootPath: resolveWorkspaceCatalogPath(cwd),
+    source: "workspace" as const,
+  };
+  const userRoot = { rootPath: writableCatalogPath, source: "user" as const };
+
+  const bundledCatalogPath = resolveBundledCatalogPath();
+  if (!bundledCatalogPath) {
+    return [workspaceRoot, userRoot];
+  }
+
+  const normalizedWorkspacePath = path.resolve(workspaceRoot.rootPath);
+  const normalizedBundledPath = path.resolve(bundledCatalogPath);
+  if (normalizedBundledPath === normalizedWorkspacePath) {
+    return [workspaceRoot, userRoot];
+  }
+
+  return [workspaceRoot, { rootPath: bundledCatalogPath, source: "workspace" as const }, userRoot];
+}
+
 function resolveClaudeInstallPath(agentId: string): string {
   return path.join(os.homedir(), ".claude", "agents", `${agentId}.md`);
 }
@@ -331,10 +361,7 @@ async function readCatalogEntries(input: {
 }> {
   const writableCatalogPath = resolveWritableCatalogPath(input.baseDir);
   await fs.mkdir(writableCatalogPath, { recursive: true });
-  const roots = [
-    { rootPath: resolveWorkspaceCatalogPath(input.cwd), source: "workspace" as const },
-    { rootPath: writableCatalogPath, source: "user" as const },
-  ];
+  const roots = resolveCatalogRoots(input.cwd, writableCatalogPath);
   const parsedRoots = await Promise.all(
     roots.map((root) => loadCatalogAgentsFromRoot(root).catch(() => [])),
   );

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildInstalledSkillPrompt, installCatalogSkill, listSkillCatalog } from "./skillCatalog";
 
 const tempDirectories: string[] = [];
+const originalCatalogRoot = process.env.SAMSCODE_CATALOG_ROOT;
 
 async function makeTempDir(prefix: string): Promise<string> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -14,6 +15,11 @@ async function makeTempDir(prefix: string): Promise<string> {
 }
 
 afterEach(async () => {
+  if (originalCatalogRoot === undefined) {
+    delete process.env.SAMSCODE_CATALOG_ROOT;
+  } else {
+    process.env.SAMSCODE_CATALOG_ROOT = originalCatalogRoot;
+  }
   await Promise.all(
     tempDirectories
       .splice(0, tempDirectories.length)
@@ -79,6 +85,41 @@ describe("skillCatalog", () => {
         codex: false,
         claudeAgent: false,
       },
+    });
+  });
+
+  it("falls back to bundled catalog skills when workspace cwd has no skills", async () => {
+    const workspaceRoot = await makeTempDir("samscode-skill-workspace-");
+    const bundledRoot = await makeTempDir("samscode-skill-bundled-");
+    const baseDir = await makeTempDir("samscode-skill-base-");
+    process.env.SAMSCODE_CATALOG_ROOT = bundledRoot;
+
+    await fs.mkdir(path.join(bundledRoot, "skills", "catalog", "frontend-design"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(bundledRoot, "skills", "catalog", "frontend-design", "SKILL.md"),
+      [
+        "---",
+        "name: frontend-design",
+        "description: Builds polished interfaces.",
+        "---",
+        "",
+        "Build polished interfaces.",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await listSkillCatalog({
+      cwd: workspaceRoot,
+      baseDir,
+    });
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).toMatchObject({
+      id: "frontend-design",
+      source: "workspace",
+      sourcePath: path.join(bundledRoot, "skills", "catalog", "frontend-design"),
     });
   });
 
