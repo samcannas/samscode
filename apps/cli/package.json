@@ -1,0 +1,36 @@
+{
+  "name": "samscode",
+  "version": "0.0.13",
+  "description": "Helper CLI for Sam's Code desktop releases",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samcannas/samscode",
+    "directory": "apps/cli"
+  },
+  "bin": {
+    "samscode": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "tsdown",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.13",
+    "tsdown": "^0.20.3",
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": "^22.16 || ^23.11 || >=24.10"
+  }
+}

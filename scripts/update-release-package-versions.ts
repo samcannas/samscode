@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const releasePackageFiles = [
+  "apps/cli/package.json",
   "apps/server/package.json",
   "apps/desktop/package.json",
   "apps/desktop-renderer/package.json",

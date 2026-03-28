@@ -27,7 +27,7 @@ const MODE_ARGS = {
     "--filter=@samscode/desktop",
     "--parallel",
   ],
-  "dev:server": ["run", "dev", "--filter=samscode"],
+  "dev:server": ["run", "dev", "--filter=@samscode/server"],
   "dev:desktop": [
     "run",
     "dev",

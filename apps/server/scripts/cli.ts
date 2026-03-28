@@ -2,13 +2,9 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Data, Effect, FileSystem, Logger, Option, Path } from "effect";
+import { Data, Effect, FileSystem, Logger, Path } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-
-import { resolveCatalogDependencies } from "../../../scripts/lib/resolve-catalog.ts";
-import rootPackageJson from "../../../package.json" with { type: "json" };
-import serverPackageJson from "../package.json" with { type: "json" };
 
 class CliError extends Data.TaggedError("CliError")<{
   readonly message: string;
@@ -69,102 +65,12 @@ const buildCmd = Command.make(
 ).pipe(Command.withDescription("Build the server package."));
 
 // ---------------------------------------------------------------------------
-// publish subcommand
-// ---------------------------------------------------------------------------
-
-const publishCmd = Command.make(
-  "publish",
-  {
-    tag: Flag.string("tag").pipe(Flag.withDefault("latest")),
-    access: Flag.string("access").pipe(Flag.withDefault("public")),
-    appVersion: Flag.string("app-version").pipe(Flag.optional),
-    provenance: Flag.boolean("provenance").pipe(Flag.withDefault(false)),
-    dryRun: Flag.boolean("dry-run").pipe(Flag.withDefault(false)),
-    verbose: Flag.boolean("verbose").pipe(Flag.withDefault(false)),
-  },
-  (config) =>
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const fs = yield* FileSystem.FileSystem;
-      const repoRoot = yield* RepoRoot;
-      const serverDir = path.join(repoRoot, "apps/server");
-      const packageJsonPath = path.join(serverDir, "package.json");
-      const backupPath = `${packageJsonPath}.bak`;
-
-      for (const relPath of ["dist/index.mjs"]) {
-        const abs = path.join(serverDir, relPath);
-        if (!(yield* fs.exists(abs))) {
-          return yield* new CliError({
-            message: `Missing build asset: ${abs}. Run the build subcommand first.`,
-          });
-        }
-      }
-
-      yield* Effect.acquireUseRelease(
-        // Acquire: backup package.json, resolve catalog: deps, strip devDependencies/scripts
-        Effect.gen(function* () {
-          // Resolve catalog dependencies before any file mutations. If this throws,
-          // acquire fails and no release hook runs, so filesystem must still be untouched.
-          const version = Option.getOrElse(config.appVersion, () => serverPackageJson.version);
-          const pkg = {
-            name: serverPackageJson.name,
-            repository: serverPackageJson.repository,
-            bin: serverPackageJson.bin,
-            type: serverPackageJson.type,
-            version,
-            engines: serverPackageJson.engines,
-            files: serverPackageJson.files,
-            dependencies: serverPackageJson.dependencies as Record<string, unknown>,
-          };
-
-          pkg.dependencies = resolveCatalogDependencies(
-            pkg.dependencies,
-            rootPackageJson.workspaces.catalog,
-            "apps/server dependencies",
-          );
-
-          const original = yield* fs.readFileString(packageJsonPath);
-          yield* fs.writeFileString(backupPath, original);
-          yield* fs.writeFileString(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
-          yield* Effect.log("[cli] Resolved package.json for publish");
-
-          return undefined;
-        }),
-        // Use: npm publish
-        () =>
-          Effect.gen(function* () {
-            const args = ["publish", "--access", config.access, "--tag", config.tag];
-            if (config.provenance) args.push("--provenance");
-            if (config.dryRun) args.push("--dry-run");
-
-            yield* Effect.log(`[cli] Running: npm ${args.join(" ")}`);
-            yield* runCommand(
-              ChildProcess.make("npm", [...args], {
-                cwd: serverDir,
-                stdout: config.verbose ? "inherit" : "ignore",
-                stderr: "inherit",
-                // Windows needs shell mode to resolve .cmd shims.
-                shell: process.platform === "win32",
-              }),
-            );
-          }),
-        // Release: restore
-        () =>
-          Effect.gen(function* () {
-            yield* fs.rename(backupPath, packageJsonPath);
-            if (config.verbose) yield* Effect.log("[cli] Restored original package.json");
-          }),
-      );
-    }),
-).pipe(Command.withDescription("Publish the server package to npm."));
-
-// ---------------------------------------------------------------------------
 // root command
 // ---------------------------------------------------------------------------
 
 const cli = Command.make("cli").pipe(
-  Command.withDescription("T3 server build & publish CLI."),
-  Command.withSubcommands([buildCmd, publishCmd]),
+  Command.withDescription("Build the internal Sam's Code server package."),
+  Command.withSubcommands([buildCmd]),
 );
 
 Command.run(cli, { version: "0.0.0" }).pipe(

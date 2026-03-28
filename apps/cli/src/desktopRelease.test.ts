@@ -72,7 +72,7 @@ describe("desktop release helpers", () => {
         "https://github.com/samcannas/samscode/releases/download/v0.0.13/samscode.exe",
     });
 
-    expect(summary).toContain("Sam's Code CLI 0.0.13");
+    expect(summary).toContain("Sam's Code helper 0.0.13");
     expect(summary).toContain(
       "Release page: https://github.com/samcannas/samscode/releases/tag/v0.0.13",
     );

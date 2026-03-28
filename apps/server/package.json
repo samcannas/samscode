@@ -1,14 +1,11 @@
 {
-  "name": "samscode",
+  "name": "@samscode/server",
   "version": "0.0.13",
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/samcannas/samscode",
     "directory": "apps/server"
-  },
-  "bin": {
-    "samscode": "./dist/index.mjs",
-    "sc": "./dist/index.mjs"
   },
   "files": [
     "dist"

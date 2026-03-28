@@ -128,7 +128,7 @@ export function pickDesktopReleaseAsset(
 
 export function renderDesktopReleaseSummary(summary: DesktopReleaseSummary): string {
   const lines = [
-    `Sam's Code CLI ${summary.currentVersion}`,
+    `Sam's Code helper ${summary.currentVersion}`,
     "",
     `Detected platform: ${summary.platformLabel}`,
     `All releases: ${summary.releasesPageUrl}`,
@@ -144,7 +144,10 @@ export function renderDesktopReleaseSummary(summary: DesktopReleaseSummary): str
     lines.push("Direct download: not available for this platform yet.");
   }
 
-  lines.push("", "Tip: run `samscode server --help` for the headless/server CLI.");
+  lines.push(
+    "",
+    "Tip: install the matching asset above or open the release page for other platforms.",
+  );
   return lines.join("\n");
 }
 

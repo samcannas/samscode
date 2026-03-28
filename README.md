@@ -16,7 +16,8 @@ Sam's Code is a desktop app for coding agents, with first-class support for Code
 ## CLI
 
 - `npx samscode` shows the latest GitHub release page and the best direct desktop download for your OS
-- `npx samscode server --help` shows the headless/server CLI flags
+- `npm i -g samscode` installs the same helper as a global command
+- The npm helper lives in `apps/cli`; the internal server lives in `apps/server` and is bundled into the desktop app
 
 ## Notes
 

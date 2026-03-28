@@ -1,65 +1,75 @@
 # Release Checklist
 
-This document covers how to run desktop releases from one tag, first without signing, then with signing.
+This document covers two separate distribution paths:
 
-## What the workflow does
+- Desktop app releases on GitHub Releases (`.exe`, `.dmg`, `.AppImage`)
+- The public npm helper package (`apps/cli`, package name `samscode`)
 
-- Trigger: push tag matching `v*.*.*`.
-- Runs quality gates first: lint, typecheck, test.
+The two flows are intentionally decoupled.
+
+## What the desktop release workflow does
+
+- Trigger: push a tag matching `v*.*.*`
+- Runs quality gates first: lint, typecheck, test
 - Builds four artifacts in parallel:
   - macOS `arm64` DMG
   - macOS `x64` DMG
   - Linux `x64` AppImage
   - Windows `x64` NSIS installer
-- Publishes one GitHub Release with all produced files.
-  - Versions with a suffix after `X.Y.Z` (for example `1.2.3-alpha.1`) are published as GitHub prereleases.
-  - Only plain `X.Y.Z` releases are marked as the repository's latest release.
-- Includes Electron auto-update metadata (for example `latest*.yml` and `*.blockmap`) in release assets.
-- Publishes the CLI package (`apps/server`, npm package `samscode`) with OIDC trusted publishing.
-- Signing is optional and auto-detected per platform from secrets.
+- Publishes one GitHub Release with all produced files
+  - Versions with a suffix after `X.Y.Z` (for example `1.2.3-alpha.1`) are published as GitHub prereleases
+  - Only plain `X.Y.Z` releases are marked as the repository's latest release
+- Includes Electron auto-update metadata (for example `latest*.yml` and `*.blockmap`) in release assets
+- Signing is optional and auto-detected per platform from secrets
+
+The desktop workflow does not publish the npm helper package.
 
 ## Desktop auto-update notes
 
-- Runtime updater: `electron-updater` in `apps/desktop/src/main.ts`.
+- Runtime updater: `electron-updater` in `apps/desktop/src/main.ts`
 - Update UX:
-  - Background checks run on startup delay + interval.
-  - No automatic download or install.
-  - The desktop UI shows a rocket update button when an update is available; click once to download, click again after download to restart/install.
-- Provider: GitHub Releases (`provider: github`) configured at build time.
+  - Background checks run on startup delay + interval
+  - No automatic download or install
+  - The desktop UI shows a rocket update button when an update is available; click once to download, click again after download to restart/install
+- Provider: GitHub Releases (`provider: github`) configured at build time
 - Repository slug source:
-  - `SAMSCODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
-  - otherwise `GITHUB_REPOSITORY` from GitHub Actions.
+  - `SAMSCODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set
+  - otherwise `GITHUB_REPOSITORY` from GitHub Actions
 - Temporary private-repo auth workaround:
-  - set `SAMSCODE_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment.
-  - the app forwards it as an `Authorization: Bearer <token>` request header for updater HTTP calls.
+  - set `SAMSCODE_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment
+  - the app forwards it as an `Authorization: Bearer <token>` request header for updater HTTP calls
 - Required release assets for updater:
   - platform installers (`.exe`, `.dmg`, `.AppImage`, plus macOS `.zip` for Squirrel.Mac update payloads)
   - `latest*.yml` metadata
   - `*.blockmap` files (used for differential downloads)
 - macOS metadata note:
-  - `electron-updater` reads `latest-mac.yml` for both Intel and Apple Silicon.
-  - The workflow merges the per-arch mac manifests into one `latest-mac.yml` before publishing the GitHub Release.
+  - `electron-updater` reads `latest-mac.yml` for both Intel and Apple Silicon
+  - the workflow merges the per-arch mac manifests into one `latest-mac.yml` before publishing the GitHub Release
 
-## 0) npm OIDC trusted publishing setup (CLI)
+## Publish the npm helper package
 
-The workflow publishes the CLI with `bun publish` from `apps/server` after bumping
-the package version to the release tag version.
+The public npm package lives in `apps/cli` and is named `samscode`.
 
-Checklist:
+Run these commands from `apps/cli`:
 
-1. Confirm npm org/user owns package `samscode` (or rename package first if needed).
-2. In npm package settings, configure Trusted Publisher:
-   - Provider: GitHub Actions
-   - Repository: this repo
-   - Workflow file: `.github/workflows/release.yml`
-   - Environment (if used): match your npm trusted publishing config
-3. Ensure npm account and org policies allow trusted publishing for the package.
-4. Create release tag `vX.Y.Z` and push; workflow will:
-   - set `apps/server/package.json` version to `X.Y.Z`
-   - build the desktop renderer + server
-   - run `bun publish --access public`
+1. Confirm the name is available:
+   - `npm view samscode`
+2. Log in to npm:
+   - `npm login`
+   - `npm whoami`
+3. Build the helper:
+   - `bun run build`
+4. Dry-run the publish:
+   - `npm publish --dry-run`
+5. Publish for real:
+   - `npm publish`
 
-## 1) Dry-run release without signing
+Notes:
+
+- `apps/cli/package.json` already sets `publishConfig.access` to `public`
+- The npm helper is independent from the desktop release workflow; publish it whenever you want to claim or update the `samscode` package name
+
+## 1) Dry-run desktop release without signing
 
 Use this first to validate the release pipeline.
 
@@ -121,18 +131,18 @@ Checklist:
    - Account name
    - Certificate profile name
    - Publisher name
-3. Create/choose an Entra app registration (service principal).
-4. Grant service principal permissions required by Trusted Signing.
+3. Create or choose an Entra app registration (service principal).
+4. Grant the service principal permissions required by Trusted Signing.
 5. Create a client secret for the service principal.
-6. Add Azure secrets listed above in GitHub Actions secrets.
-7. Re-run a tag release and confirm Windows installer is signed.
+6. Add the Azure secrets listed above in GitHub Actions secrets.
+7. Re-run a tag release and confirm the Windows installer is signed.
 
-## 4) Ongoing release checklist
+## 4) Ongoing desktop release checklist
 
 1. Ensure `main` is green in CI.
-2. Bump app version as needed.
-3. Create release tag: `vX.Y.Z`.
-4. Push tag.
+2. Bump app versions as needed.
+3. Create a release tag: `vX.Y.Z`.
+4. Push the tag.
 5. Verify workflow steps:
    - preflight passes
    - all matrix builds pass
@@ -142,9 +152,9 @@ Checklist:
 ## 5) Troubleshooting
 
 - macOS build unsigned when expected signed:
-  - Check all Apple secrets are populated and non-empty.
+  - Check that all Apple secrets are populated and non-empty.
 - Windows build unsigned when expected signed:
-  - Check all Azure ATS and auth secrets are populated and non-empty.
+  - Check that all Azure ATS and auth secrets are populated and non-empty.
 - Build fails with signing error:
-  - Retry with secrets removed to confirm unsigned path still works.
+  - Retry with secrets removed to confirm the unsigned path still works.
   - Re-check certificate/profile names and tenant/client credentials.
