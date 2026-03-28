@@ -1,6 +1,6 @@
 {
   "name": "@samscode/desktop-renderer",
-  "version": "0.0.13",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
