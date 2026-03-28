@@ -7,9 +7,54 @@ export interface ResolvedDesktopUpdateMetadata {
   availableSizeBytes: number | null;
 }
 
-function normalizeReleaseText(value: string): string | null {
-  const normalized = value.trim();
+const HTML_ENTITY_REPLACEMENTS: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  nbsp: " ",
+  quot: '"',
+};
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
+    const normalized = entity.toLowerCase();
+    if (normalized in HTML_ENTITY_REPLACEMENTS) {
+      return HTML_ENTITY_REPLACEMENTS[normalized] ?? match;
+    }
+
+    if (normalized.startsWith("#x")) {
+      const codePoint = Number.parseInt(normalized.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+
+    if (normalized.startsWith("#")) {
+      const codePoint = Number.parseInt(normalized.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+
+    return match;
+  });
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*\/\s*(p|div|li|ul|ol|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+}
+
+function sanitizeReleaseText(value: string): string | null {
+  const stripped = stripHtml(decodeHtmlEntities(value));
+  const normalized = stripped
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeReleaseText(value: string): string | null {
+  return sanitizeReleaseText(value);
 }
 
 export function resolveDesktopUpdateReleaseNotes(releaseNotes: unknown): string | null {

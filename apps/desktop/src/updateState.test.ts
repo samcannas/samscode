@@ -115,6 +115,14 @@ describe("desktop update metadata helpers", () => {
     ).toBe("First note\n\nSecond note");
   });
 
+  it("strips html and decodes entities from GitHub release notes", () => {
+    expect(
+      resolveDesktopUpdateReleaseNotes(
+        '<p><strong>Full Changelog:</strong> <a href="https://github.com/samcannas/samscode/compare/v0.1.2...v0.1.3">v0.1.2...v0.1.3</a> &amp; more</p>',
+      ),
+    ).toBe("Full Changelog: v0.1.2...v0.1.3 & more");
+  });
+
   it("uses the largest file size as an approximate download size", () => {
     expect(resolveDesktopUpdateSizeBytes([{ size: 12 }, { size: 42 }])).toBe(42);
   });
