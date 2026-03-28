@@ -2,6 +2,7 @@
   "name": "@samscode/shared",
   "version": "0.0.0-alpha.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./model": {

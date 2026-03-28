@@ -2,6 +2,7 @@
   "name": "samscode",
   "version": "0.1.2",
   "description": "Helper CLI for Sam's Code desktop releases",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/samcannas/samscode",

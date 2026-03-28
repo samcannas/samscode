@@ -24,6 +24,11 @@ Sam's Code is a desktop app for coding agents, with first-class support for Code
 - This project is still early and may change quickly
 - Before finishing changes, run `bun fmt`, `bun lint`, and `bun typecheck`
 
+## Licensing
+
+- Sam's Code is licensed under MIT; see `LICENSE`
+- Third-party notices for copied or adapted upstream material live in `NOTICE.md` and `third_party_licenses/`
+
 ## Version Change
 
 - To bump the project's version, use:

@@ -20,6 +20,7 @@ This catalog is a curated import from [`msitarzewski/agency-agents`](https://git
 - Local filenames are normalized to clean slugs without the source repo category prefixes.
 - Imported files keep the source markdown body plus useful source frontmatter, with local `id`, `author`, and `source_path` metadata added where needed.
 - Only the requested subset of agency-agents is kept in this catalog.
+- The upstream MIT notice for these imports is retained in `NOTICE.md` and `third_party_licenses/msitarzewski-agency-agents.MIT.txt`.
 
 ## Add or update imports
 

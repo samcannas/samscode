@@ -2,6 +2,7 @@
   "name": "@samscode/desktop",
   "version": "0.1.2",
   "private": true,
+  "license": "MIT",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "bun run --parallel dev:bundle dev:electron",
