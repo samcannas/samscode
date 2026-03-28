@@ -18,6 +18,7 @@ import { makeDrainableWorker } from "@samscode/shared/DrainableWorker";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
+import { ContextOptimizationService } from "../../contextOptimization/Services/ContextOptimization.ts";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { isGitRepository } from "../../git/isRepo.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -482,6 +483,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
+  const contextOptimization = yield* ContextOptimizationService;
 
   const assistantDeliveryModeRef = yield* Ref.make<AssistantDeliveryMode>(
     DEFAULT_ASSISTANT_DELIVERY_MODE,
@@ -859,6 +861,17 @@ const make = Effect.gen(function* () {
       const thread = readModel.threads.find((entry) => entry.id === event.threadId);
       if (!thread) return;
 
+      yield* contextOptimization.recordRuntimeEvent(event).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("context optimization failed to record runtime event", {
+            threadId: event.threadId,
+            eventId: event.eventId,
+            eventType: event.type,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
+
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId = thread.session?.activeTurnId ?? null;
@@ -1113,6 +1126,21 @@ const make = Effect.gen(function* () {
             updatedAt: now,
           });
         }
+
+        yield* contextOptimization
+          .recordTurnCompleted({
+            threadId: thread.id,
+            createdAt: now,
+          })
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("context optimization failed to evaluate completed turn", {
+                threadId: thread.id,
+                eventId: event.eventId,
+                cause: Cause.pretty(cause),
+              }),
+            ),
+          );
       }
 
       if (event.type === "session.exited") {
@@ -1200,10 +1228,21 @@ const make = Effect.gen(function* () {
     });
 
   const processDomainEvent = (event: TurnStartRequestedDomainEvent) =>
-    Ref.set(
-      assistantDeliveryModeRef,
-      event.payload.assistantDeliveryMode ?? DEFAULT_ASSISTANT_DELIVERY_MODE,
-    );
+    Effect.gen(function* () {
+      yield* Ref.set(
+        assistantDeliveryModeRef,
+        event.payload.assistantDeliveryMode ?? DEFAULT_ASSISTANT_DELIVERY_MODE,
+      );
+      yield* contextOptimization.recordTurnStartRequested(event).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("context optimization failed to record turn start request", {
+            threadId: event.payload.threadId,
+            eventId: event.eventId,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
+    });
 
   const processInput = (input: RuntimeIngestionInput) =>
     input.source === "runtime" ? processRuntimeEvent(input.event) : processDomainEvent(input.event);

@@ -227,6 +227,7 @@ describe("AppSettingsSchema", () => {
       confirmThreadDelete: false,
       diffWordWrap: false,
       enableAssistantStreaming: false,
+      enableAutoContextOptimization: false,
       sidebarProjectSortOrder: DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
       sidebarThreadSortOrder: DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,

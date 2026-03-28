@@ -2738,6 +2738,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         ...(providerMessageText !== outgoingMessageText
           ? { providerInputText: providerMessageText }
           : {}),
+        contextOptimizationEnabled: settings.enableAutoContextOptimization,
         model: selectedModel || undefined,
         ...(selectedModelOptionsForDispatch
           ? { modelOptions: selectedModelOptionsForDispatch }
@@ -3008,6 +3009,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           ...(providerMessageText !== outgoingMessageText
             ? { providerInputText: providerMessageText }
             : {}),
+          contextOptimizationEnabled: settings.enableAutoContextOptimization,
           provider: selectedProvider,
           model: selectedModel || undefined,
           ...(selectedModelOptionsForDispatch
@@ -3064,6 +3066,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       selectedProvider,
       setComposerDraftInteractionMode,
       setThreadError,
+      settings.enableAutoContextOptimization,
       settings.enableAssistantStreaming,
     ],
   );
@@ -3130,6 +3133,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             text: outgoingImplementationPrompt,
             attachments: [],
           },
+          contextOptimizationEnabled: settings.enableAutoContextOptimization,
           provider: selectedProvider,
           model: selectedModel || undefined,
           ...(selectedModelOptionsForDispatch
@@ -3188,6 +3192,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedModelOptionsForDispatch,
     providerOptionsForDispatch,
     selectedProvider,
+    settings.enableAutoContextOptimization,
     settings.enableAssistantStreaming,
     syncServerReadModel,
   ]);

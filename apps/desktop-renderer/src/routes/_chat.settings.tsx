@@ -1378,6 +1378,44 @@ function SettingsRouteView() {
                   </Button>
                 </div>
               ) : null}
+
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                <div className="pr-4">
+                  <p className="text-sm font-medium text-foreground">Auto context optimization</p>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically reseeds long-running agent sessions onto a compact context
+                    snapshot while keeping the same thread UI.
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Experimental. When disabled, thread behavior is unchanged.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.enableAutoContextOptimization}
+                  onCheckedChange={(checked) =>
+                    updateSettings({
+                      enableAutoContextOptimization: Boolean(checked),
+                    })
+                  }
+                  aria-label="Auto context optimization"
+                />
+              </div>
+
+              {settings.enableAutoContextOptimization !== defaults.enableAutoContextOptimization ? (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateSettings({
+                        enableAutoContextOptimization: defaults.enableAutoContextOptimization,
+                      })
+                    }
+                  >
+                    Restore default
+                  </Button>
+                </div>
+              ) : null}
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-5">

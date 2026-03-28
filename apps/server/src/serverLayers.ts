@@ -16,6 +16,7 @@ import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/Proj
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
+import { ContextOptimizationLive } from "./contextOptimization/Layers/ContextOptimization";
 import { ProviderUnsupportedError } from "./provider/Errors";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
@@ -24,6 +25,8 @@ import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger";
+import { ThreadContextOptimizationRepositoryLive } from "./persistence/Layers/ThreadContextOptimization";
+import { ProjectionTurnRepositoryLive } from "./persistence/Layers/ProjectionTurns";
 
 import { TerminalManagerLive } from "./terminal/Layers/Manager";
 import { KeybindingsLive } from "./keybindings";
@@ -114,6 +117,11 @@ export function makeServerRuntimeServicesLayer() {
     CheckpointStoreLive,
     checkpointDiffQueryLayer,
     RuntimeReceiptBusLive,
+    ContextOptimizationLive.pipe(
+      Layer.provideMerge(ThreadContextOptimizationRepositoryLive),
+      Layer.provideMerge(ProjectionTurnRepositoryLive),
+      Layer.provideMerge(orchestrationLayer),
+    ),
   );
   const runtimeIngestionLayer = ProviderRuntimeIngestionLive.pipe(
     Layer.provideMerge(runtimeServicesLayer),

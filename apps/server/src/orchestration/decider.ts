@@ -304,6 +304,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.providerInputText !== undefined
             ? { providerInputText: command.providerInputText }
             : {}),
+          ...(command.contextOptimizationEnabled !== undefined
+            ? { contextOptimizationEnabled: command.contextOptimizationEnabled }
+            : {}),
           ...(command.modelOptions !== undefined ? { modelOptions: command.modelOptions } : {}),
           ...(command.providerOptions !== undefined
             ? { providerOptions: command.providerOptions }

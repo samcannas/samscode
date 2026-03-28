@@ -16,6 +16,7 @@ import { Cache, Cause, Duration, Effect, Layer, Option, Schema, Stream } from "e
 import { makeDrainableWorker } from "@samscode/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
+import { ContextOptimizationService } from "../../contextOptimization/Services/ContextOptimization.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { ProviderAdapterRequestError, ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
@@ -121,6 +122,7 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const git = yield* GitCore;
   const textGeneration = yield* TextGeneration;
+  const contextOptimization = yield* ContextOptimizationService;
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -195,6 +197,7 @@ const make = Effect.gen(function* () {
       readonly model?: string;
       readonly modelOptions?: ProviderModelOptions;
       readonly providerOptions?: ProviderStartOptions;
+      readonly forceFreshSession?: boolean;
     },
   ) {
     const readModel = yield* orchestrationEngine.getReadModel();
@@ -271,6 +274,24 @@ const make = Effect.gen(function* () {
 
     const existingSessionThreadId =
       thread.session && thread.session.status !== "stopped" ? thread.id : null;
+    if (options?.forceFreshSession) {
+      yield* providerService.stopSession({ threadId }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logDebug(
+            "provider command reactor ignored stop-session failure before fresh reseed",
+            {
+              threadId,
+              cause: Cause.pretty(cause),
+            },
+          ),
+        ),
+      );
+      const freshSession = yield* startProviderSession(
+        options?.provider !== undefined ? { provider: options.provider } : undefined,
+      );
+      yield* bindSessionToThread(freshSession);
+      return freshSession.threadId;
+    }
     if (existingSessionThreadId) {
       const providerChanged =
         options?.provider !== undefined && options.provider !== currentProvider;
@@ -338,6 +359,7 @@ const make = Effect.gen(function* () {
     readonly providerOptions?: ProviderStartOptions;
     readonly interactionMode?: "default" | "plan";
     readonly createdAt: string;
+    readonly forceFreshSession?: boolean;
   }) {
     const thread = yield* resolveThread(input.threadId);
     if (!thread) {
@@ -348,6 +370,7 @@ const make = Effect.gen(function* () {
       ...(input.model !== undefined ? { model: input.model } : {}),
       ...(input.modelOptions !== undefined ? { modelOptions: input.modelOptions } : {}),
       ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
+      ...(input.forceFreshSession ? { forceFreshSession: true } : {}),
     });
     if (input.providerOptions !== undefined) {
       threadProviderOptions.set(input.threadId, input.providerOptions);
@@ -482,32 +505,121 @@ const make = Effect.gen(function* () {
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
     }).pipe(Effect.forkScoped);
 
-    yield* sendTurnForThread({
-      threadId: event.payload.threadId,
-      messageText: message.text,
-      ...(event.payload.providerInputText !== undefined
-        ? { providerInputText: event.payload.providerInputText }
-        : {}),
-      ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-      ...(event.payload.provider !== undefined ? { provider: event.payload.provider } : {}),
-      ...(event.payload.model !== undefined ? { model: event.payload.model } : {}),
-      ...(event.payload.modelOptions !== undefined
-        ? { modelOptions: event.payload.modelOptions }
-        : {}),
-      ...(event.payload.providerOptions !== undefined
-        ? { providerOptions: event.payload.providerOptions }
-        : {}),
-      interactionMode: event.payload.interactionMode,
-      createdAt: event.payload.createdAt,
-    }).pipe(
-      Effect.catchCause((cause) =>
-        appendProviderFailureActivity({
+    const turnInput = yield* Effect.gen(function* () {
+      const baseInput = {
+        threadId: event.payload.threadId,
+        messageText: message.text,
+        ...(event.payload.providerInputText !== undefined
+          ? { providerInputText: event.payload.providerInputText }
+          : {}),
+        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+        ...(event.payload.provider !== undefined ? { provider: event.payload.provider } : {}),
+        ...(event.payload.model !== undefined ? { model: event.payload.model } : {}),
+        ...(event.payload.modelOptions !== undefined
+          ? { modelOptions: event.payload.modelOptions }
+          : {}),
+        ...(event.payload.providerOptions !== undefined
+          ? { providerOptions: event.payload.providerOptions }
+          : {}),
+        interactionMode: event.payload.interactionMode,
+        createdAt: event.payload.createdAt,
+      } as const;
+      const optimizationEnabled = event.payload.contextOptimizationEnabled ?? false;
+      if (!optimizationEnabled) {
+        yield* contextOptimization.cancelPendingReseed({
           threadId: event.payload.threadId,
-          kind: "provider.turn.start.failed",
-          summary: "Provider turn start failed",
-          detail: Cause.pretty(cause),
-          turnId: null,
-          createdAt: event.payload.createdAt,
+          reason: "Context optimization disabled",
+        });
+        return baseInput;
+      }
+
+      const pendingReseed = yield* contextOptimization.getPendingReseed(event.payload.threadId);
+      if (Option.isNone(pendingReseed)) {
+        return baseInput;
+      }
+
+      const reseedInput = yield* contextOptimization.buildReseedProviderInput({
+        threadId: event.payload.threadId,
+        userMessageText: event.payload.providerInputText ?? message.text,
+      });
+      yield* contextOptimization.markReseedStarted(event.payload.threadId);
+      return {
+        ...baseInput,
+        providerInputText: reseedInput.providerInputText,
+        forceFreshSession: true,
+        packetPreview: reseedInput.packetPreview,
+        pendingReason: reseedInput.pendingReseed.reason,
+        pendingEstimatedTokensRemoved: reseedInput.pendingReseed.estimatedTokensRemoved,
+      } as const;
+    });
+
+    yield* sendTurnForThread(turnInput).pipe(
+      Effect.tap(() =>
+        "packetPreview" in turnInput
+          ? contextOptimization
+              .markReseedSucceeded({
+                threadId: event.payload.threadId,
+                createdAt: event.payload.createdAt,
+                packetPreview: turnInput.packetPreview,
+              })
+              .pipe(
+                Effect.flatMap((nextState) =>
+                  orchestrationEngine.dispatch({
+                    type: "thread.activity.append",
+                    commandId: serverCommandId("context-optimized-activity"),
+                    threadId: event.payload.threadId,
+                    activity: {
+                      id: EventId.makeUnsafe(crypto.randomUUID()),
+                      tone: "info",
+                      kind: "context.optimized",
+                      summary: "Context optimized",
+                      payload: {
+                        segmentIndex: nextState.segmentIndex,
+                        estimatedTokensRemoved: turnInput.pendingEstimatedTokensRemoved,
+                        reason: turnInput.pendingReason,
+                        provider:
+                          event.payload.provider ??
+                          (thread.session?.providerName === "codex" ||
+                          thread.session?.providerName === "claudeAgent"
+                            ? thread.session.providerName
+                            : null),
+                        triggeredAt: event.payload.createdAt,
+                      },
+                      turnId: null,
+                      createdAt: event.payload.createdAt,
+                    },
+                    createdAt: event.payload.createdAt,
+                  }),
+                ),
+              )
+              .pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("context optimization post-send completion failed", {
+                    threadId: event.payload.threadId,
+                    cause: Cause.pretty(cause),
+                  }),
+                ),
+              )
+          : Effect.void,
+      ),
+      Effect.catchCause((cause) =>
+        Effect.gen(function* () {
+          const causeText = Cause.pretty(cause);
+          const pendingReseed = yield* contextOptimization.getPendingReseed(event.payload.threadId);
+          if (Option.isSome(pendingReseed)) {
+            yield* contextOptimization.markReseedFailed({
+              threadId: event.payload.threadId,
+              error: causeText,
+            });
+          }
+          yield* appendProviderFailureActivity({
+            threadId: event.payload.threadId,
+            kind: "provider.turn.start.failed",
+            summary: "Provider turn start failed",
+            detail: causeText,
+            turnId: null,
+            createdAt: event.payload.createdAt,
+          });
         }),
       ),
     );

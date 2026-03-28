@@ -140,6 +140,25 @@ it.effect("preserves explicit provider in thread.turn.start", () =>
   }),
 );
 
+it.effect("preserves context optimization flag in thread.turn.start", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: "thread.turn.start",
+      commandId: "cmd-turn-opt-1",
+      threadId: "thread-1",
+      message: {
+        messageId: "msg-opt-1",
+        role: "user",
+        text: "hello",
+        attachments: [],
+      },
+      contextOptimizationEnabled: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.contextOptimizationEnabled, true);
+  }),
+);
+
 it.effect("decodes thread.created payloads", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadCreatedPayload({
@@ -239,6 +258,18 @@ it.effect("decodes thread.turn-start-requested source proposed plan metadata whe
       threadId: "thread-1",
       planId: "plan-1",
     });
+  }),
+);
+
+it.effect("preserves context optimization flag in thread.turn-start-requested payload", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartRequestedPayload({
+      threadId: "thread-3",
+      messageId: "msg-3",
+      contextOptimizationEnabled: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.contextOptimizationEnabled, true);
   }),
 );
 
