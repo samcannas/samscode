@@ -30,7 +30,8 @@ The desktop workflow does not publish the npm helper package.
 - Update UX:
   - Background checks run on startup delay + interval
   - No automatic download or install
-  - The desktop UI shows a rocket update button when an update is available; click once to download, click again after download to restart/install
+  - The desktop UI shows update notifications plus Settings actions when an update is available
+  - The sidebar update button remains as a secondary fallback action
 - Provider: GitHub Releases (`provider: github`) configured at build time
 - Repository slug source:
   - `SAMSCODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set
