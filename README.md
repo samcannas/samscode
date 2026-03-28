@@ -4,7 +4,7 @@ Sam's Code is a desktop app for coding agents, with first-class support for Code
 
 ## Quick Start
 
-- Install the CLI package with `npx samscode`
+- Run `npx samscode` to see the latest desktop release links for your OS
 - Or download the desktop app from the GitHub releases page
 
 ## Development
@@ -12,6 +12,11 @@ Sam's Code is a desktop app for coding agents, with first-class support for Code
 - `bun install`
 - `bun run dev` for the desktop workflow
 - `bun run start` to launch the built desktop app
+
+## CLI
+
+- `npx samscode` shows the latest GitHub release page and the best direct desktop download for your OS
+- `npx samscode server --help` shows the headless/server CLI flags
 
 ## Notes
 

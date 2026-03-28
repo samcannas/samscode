@@ -1,25 +1,14 @@
-import { type AgentInstallTarget, type ThreadId } from "@samscode/contracts";
+import type { AgentCatalogEntry, AgentInstallTarget, ThreadId } from "@samscode/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { BotIcon, RefreshCcwIcon, WrenchIcon } from "lucide-react";
 import { useAppSettings } from "~/appSettings";
-import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
-import { SidebarInset } from "~/components/ui/sidebar";
+import { CatalogCard } from "~/components/CatalogCard";
+import { CatalogPageLayout } from "~/components/CatalogPageLayout";
 import { toastManager } from "~/components/ui/toast";
 import {
   affectedProvidersForTarget,
   HARNESS_TARGET_LABELS,
-  installStateSummary,
   isTargetInstalled,
   supportedTargetsForProviders,
 } from "~/lib/harnessInstallTargets";
@@ -88,6 +77,18 @@ async function maybeRestartAffectedSessions(input: {
     description:
       "The affected provider sessions were stopped and will reload the next time they are used.",
   });
+}
+
+function buildAgentMetaText(entry: AgentCatalogEntry): string | undefined {
+  const parts: string[] = [];
+  if (entry.author) parts.push(`by ${entry.author}`);
+  if (entry.vibe) parts.push(entry.vibe);
+  if (entry.tools && entry.tools.length > 0) {
+    const toolList = entry.tools.slice(0, 3).join(", ");
+    const suffix = entry.tools.length > 3 ? ` +${entry.tools.length - 3}` : "";
+    parts.push(`tools: ${toolList}${suffix}`);
+  }
+  return parts.length > 0 ? parts.join(" \u00b7 ") : undefined;
 }
 
 function AgentsRouteView() {
@@ -176,173 +177,52 @@ function AgentsRouteView() {
   }, [agentCatalogQuery.data?.entries, searchValue]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-          <span className="text-xs font-medium tracking-wide text-muted-foreground/70">Agents</span>
-        </div>
+    <CatalogPageLayout
+      title="Agents"
+      subtitle="Install agent definitions for Codex, Claude Code, or both."
+      searchPlaceholder="Search agents"
+      catalogPath={agentCatalogQuery.data?.writableCatalogPath}
+      catalogHint="Drop markdown agent files into this folder and refresh."
+      isLoading={agentCatalogQuery.isLoading}
+      isEmpty={filteredEntries.length === 0}
+      onRefresh={() => void queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })}
+      searchValue={searchValue}
+      onSearchChange={setSearchValue}
+      emptyTitle="No matching agents"
+      emptyDescription="Add markdown agent files to the catalog folder or adjust your search."
+    >
+      {filteredEntries.map((entry) => {
+        const supportedTargets = supportedTargetsForProviders(entry.supports);
+        const selectedTarget = targetByAgentId[entry.id] ?? supportedTargets[0] ?? "all";
+        const selectedTargetInstalled = isTargetInstalled(entry.installState, selectedTarget);
+        const isBusy =
+          installMutation.isPending && installMutation.variables?.agentId === entry.id
+            ? true
+            : uninstallMutation.isPending && uninstallMutation.variables?.agentId === entry.id;
 
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-            <header className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Agents</h1>
-              <p className="text-sm text-muted-foreground">
-                Install agent definitions for Codex, Claude Code, or both harnesses.
-              </p>
-            </header>
-
-            <section className="rounded-2xl border border-border bg-card p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">Catalog folder</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Drop additional markdown agent files into this folder and they will appear here
-                    on the next refresh.
-                  </p>
-                  <p className="mt-2 break-all rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-[11px] text-foreground/90">
-                    {agentCatalogQuery.data?.writableCatalogPath ?? "Loading..."}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Input
-                    value={searchValue}
-                    onChange={(event) => setSearchValue(event.target.value)}
-                    placeholder="Search agents"
-                    className="w-full sm:w-64"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      void queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
-                    }
-                  >
-                    <RefreshCcwIcon className="size-4" />
-                    Refresh
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            <section className="grid gap-4 lg:grid-cols-2">
-              {filteredEntries.map((entry) => {
-                const supportedTargets = supportedTargetsForProviders(entry.supports);
-                const selectedTarget = targetByAgentId[entry.id] ?? supportedTargets[0] ?? "all";
-                const selectedTargetInstalled = isTargetInstalled(
-                  entry.installState,
-                  selectedTarget,
-                );
-                const isBusy =
-                  installMutation.isPending && installMutation.variables?.agentId === entry.id
-                    ? true
-                    : uninstallMutation.isPending &&
-                      uninstallMutation.variables?.agentId === entry.id;
-                return (
-                  <article
-                    key={entry.id}
-                    className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-base font-semibold text-foreground">{entry.name}</h2>
-                          <Badge variant="outline">{entry.id}</Badge>
-                          {entry.category ? (
-                            <Badge variant="outline">{entry.category}</Badge>
-                          ) : null}
-                          <Badge variant="outline">{entry.source}</Badge>
-                        </div>
-                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                          {entry.description}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-background p-2 text-muted-foreground/80">
-                        <BotIcon className="size-5" />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <Badge variant={entry.installState.codex ? "secondary" : "outline"}>
-                        Codex {entry.installState.codex ? "installed" : "available"}
-                      </Badge>
-                      <Badge variant={entry.installState.claudeAgent ? "secondary" : "outline"}>
-                        Claude Code {entry.installState.claudeAgent ? "installed" : "available"}
-                      </Badge>
-                      {entry.tools?.slice(0, 4).map((tool) => (
-                        <Badge key={tool} variant="outline">
-                          {tool}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-                      {installStateSummary(entry.installState)}
-                    </div>
-
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <Select
-                        value={selectedTarget}
-                        onValueChange={(value) => {
-                          if (value !== "all" && value !== "codex" && value !== "claudeAgent") {
-                            return;
-                          }
-                          setTargetByAgentId((existing) => ({
-                            ...existing,
-                            [entry.id]: value,
-                          }));
-                        }}
-                      >
-                        <SelectTrigger
-                          className="w-full sm:w-52"
-                          aria-label={`Install target for ${entry.name}`}
-                        >
-                          <SelectValue>{HARNESS_TARGET_LABELS[selectedTarget]}</SelectValue>
-                        </SelectTrigger>
-                        <SelectPopup align="start">
-                          {supportedTargets.map((target) => (
-                            <SelectItem key={target} value={target}>
-                              {HARNESS_TARGET_LABELS[target]}
-                            </SelectItem>
-                          ))}
-                        </SelectPopup>
-                      </Select>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          disabled={isBusy || !selectedTargetInstalled}
-                          onClick={() =>
-                            uninstallMutation.mutate({ agentId: entry.id, target: selectedTarget })
-                          }
-                        >
-                          <WrenchIcon className="size-4" />
-                          Remove
-                        </Button>
-                        <Button
-                          disabled={isBusy}
-                          onClick={() =>
-                            installMutation.mutate({ agentId: entry.id, target: selectedTarget })
-                          }
-                        >
-                          {selectedTargetInstalled ? "Reinstall" : "Install"}
-                        </Button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-
-            {!agentCatalogQuery.isLoading && filteredEntries.length === 0 ? (
-              <section className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
-                <p className="text-sm font-medium text-foreground">No matching agents</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Add markdown agent files to the catalog folder or adjust your search.
-                </p>
-              </section>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </SidebarInset>
+        return (
+          <CatalogCard
+            key={entry.id}
+            entry={entry}
+            selectedTarget={selectedTarget}
+            selectedTargetInstalled={selectedTargetInstalled}
+            supportedTargets={supportedTargets}
+            isBusy={isBusy}
+            metaText={buildAgentMetaText(entry)}
+            onTargetChange={(target) => {
+              setTargetByAgentId((existing) => ({
+                ...existing,
+                [entry.id]: target,
+              }));
+            }}
+            onInstall={() => installMutation.mutate({ agentId: entry.id, target: selectedTarget })}
+            onUninstall={() =>
+              uninstallMutation.mutate({ agentId: entry.id, target: selectedTarget })
+            }
+          />
+        );
+      })}
+    </CatalogPageLayout>
   );
 }
 
