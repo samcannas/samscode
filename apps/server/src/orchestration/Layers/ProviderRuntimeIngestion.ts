@@ -318,6 +318,27 @@ function runtimeEventToActivities(
       ];
     }
 
+    case "content.delta": {
+      if (event.payload.streamKind !== "reasoning_text" || event.payload.delta.length === 0) {
+        return [];
+      }
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "reasoning.delta",
+          summary: "Reasoning",
+          payload: {
+            detail: truncateDetail(event.payload.delta),
+            streamKind: event.payload.streamKind,
+          },
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "task.completed": {
       return [
         {

@@ -412,7 +412,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     id: activity.id,
     createdAt: activity.createdAt,
     label: activity.summary,
-    tone: activity.tone,
+    tone:
+      activity.kind === "task.progress" || activity.kind === "reasoning.delta"
+        ? "thinking"
+        : activity.tone,
     activityKind: activity.kind,
   };
   const itemType = extractWorkLogItemType(payload);

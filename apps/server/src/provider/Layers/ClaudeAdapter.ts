@@ -453,15 +453,21 @@ function normalizeClaudeTokenUsage(
     typeof record.output_tokens === "number" && Number.isFinite(record.output_tokens)
       ? record.output_tokens
       : 0;
-  const derivedUsedTokens = inputTokens + outputTokens;
-  const usedTokens = directUsedTokens ?? (derivedUsedTokens > 0 ? derivedUsedTokens : undefined);
-  if (usedTokens === undefined || usedTokens <= 0) {
+
+  // Claude task-progress events sometimes expose `total_tokens`, which tracks the
+  // active context occupancy well enough for a context-window meter. Result-level
+  // usage objects often omit `total_tokens` and only expose cumulative
+  // cache/input/output counters across many internal iterations; treating those as
+  // "current context used" massively overcounts and can exceed the model window.
+  const totalProcessedTokens = inputTokens + outputTokens;
+  if (directUsedTokens === undefined || directUsedTokens <= 0) {
     return undefined;
   }
 
   return {
-    usedTokens,
-    lastUsedTokens: usedTokens,
+    usedTokens: directUsedTokens,
+    lastUsedTokens: directUsedTokens,
+    ...(totalProcessedTokens > directUsedTokens ? { totalProcessedTokens } : {}),
     ...(inputTokens > 0 ? { inputTokens } : {}),
     ...(outputTokens > 0 ? { outputTokens } : {}),
     ...(typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0
