@@ -12,6 +12,11 @@ const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const WINDOW_MINIMIZE_CHANNEL = "desktop:window-minimize";
+const WINDOW_MAXIMIZE_CHANNEL = "desktop:window-maximize";
+const WINDOW_CLOSE_CHANNEL = "desktop:window-close";
+const WINDOW_IS_MAXIMIZED_CHANNEL = "desktop:window-is-maximized";
+const WINDOW_MAXIMIZED_CHANGE_CHANNEL = "desktop:window-maximized-change";
 const wsUrl = process.env.SAMSCODE_DESKTOP_WS_URL ?? null;
 
 contextBridge.exposeInMainWorld("desktopBridge", {
@@ -45,6 +50,21 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.on(UPDATE_STATE_CHANNEL, wrappedListener);
     return () => {
       ipcRenderer.removeListener(UPDATE_STATE_CHANNEL, wrappedListener);
+    };
+  },
+  windowMinimize: () => ipcRenderer.invoke(WINDOW_MINIMIZE_CHANNEL),
+  windowMaximize: () => ipcRenderer.invoke(WINDOW_MAXIMIZE_CHANNEL),
+  windowClose: () => ipcRenderer.invoke(WINDOW_CLOSE_CHANNEL),
+  getWindowIsMaximized: () => ipcRenderer.invoke(WINDOW_IS_MAXIMIZED_CHANNEL),
+  onWindowMaximizedChange: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, isMaximized: unknown) => {
+      if (typeof isMaximized !== "boolean") return;
+      listener(isMaximized);
+    };
+
+    ipcRenderer.on(WINDOW_MAXIMIZED_CHANGE_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(WINDOW_MAXIMIZED_CHANGE_CHANNEL, wrappedListener);
     };
   },
 } satisfies DesktopBridge);

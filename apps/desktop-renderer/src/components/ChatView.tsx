@@ -141,6 +141,7 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./Compose
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { TitlebarControls } from "./WindowControlsOverlay";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ProviderModelPicker } from "./chat/ProviderModelPicker";
@@ -3539,6 +3540,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
         <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
           <span className="text-xs text-muted-foreground/50">No active thread</span>
+          <TitlebarControls />
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
@@ -3580,6 +3582,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
         />
+        <TitlebarControls />
       </header>
 
       {/* Error banner */}

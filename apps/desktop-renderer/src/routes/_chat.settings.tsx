@@ -36,6 +36,7 @@ import {
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
+import { TitlebarControls } from "~/components/WindowControlsOverlay";
 import { updateSpeechToTextState, useSpeechToTextState } from "~/speechToText/speechToTextState";
 import { UpstreamSyncSection } from "~/components/UpstreamSyncSection";
 import {
@@ -411,6 +412,7 @@ function SettingsRouteView() {
           <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
             Settings
           </span>
+          <TitlebarControls />
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">

@@ -1379,6 +1379,33 @@ function registerIpcHandlers(): void {
       state: updateState,
     } satisfies DesktopUpdateActionResult;
   });
+
+  // ---- Window control IPC handlers (frameless windows on Windows / Linux) ----
+  ipcMain.removeHandler("desktop:window-minimize");
+  ipcMain.handle("desktop:window-minimize", () => {
+    BrowserWindow.getFocusedWindow()?.minimize();
+  });
+
+  ipcMain.removeHandler("desktop:window-maximize");
+  ipcMain.handle("desktop:window-maximize", () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (!win) return;
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+  });
+
+  ipcMain.removeHandler("desktop:window-close");
+  ipcMain.handle("desktop:window-close", () => {
+    BrowserWindow.getFocusedWindow()?.close();
+  });
+
+  ipcMain.removeHandler("desktop:window-is-maximized");
+  ipcMain.handle("desktop:window-is-maximized", () => {
+    return BrowserWindow.getFocusedWindow()?.isMaximized() ?? false;
+  });
 }
 
 function getIconOption(): { icon: string } | Record<string, never> {
@@ -1389,6 +1416,17 @@ function getIconOption(): { icon: string } | Record<string, never> {
 }
 
 function createWindow(): BrowserWindow {
+  // macOS: use the native hidden-inset title bar with traffic light buttons.
+  // Windows / Linux: go fully frameless so we render custom window controls
+  // in the renderer process (JetBrains-style integrated titlebar).
+  const platformTitleBarOptions =
+    process.platform === "darwin"
+      ? ({
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 16, y: 18 },
+        } as const)
+      : ({ frame: false } as const);
+
   const window = new BrowserWindow({
     width: 1100,
     height: 780,
@@ -1398,14 +1436,22 @@ function createWindow(): BrowserWindow {
     autoHideMenuBar: true,
     ...getIconOption(),
     title: APP_DISPLAY_NAME,
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 18 },
+    ...platformTitleBarOptions,
     webPreferences: {
       preload: Path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  // Forward maximize / unmaximize state changes to the renderer so the
+  // custom window controls can update the restore-vs-maximize icon.
+  window.on("maximize", () => {
+    window.webContents.send("desktop:window-maximized-change", true);
+  });
+  window.on("unmaximize", () => {
+    window.webContents.send("desktop:window-maximized-change", false);
   });
 
   window.webContents.on("context-menu", (event, params) => {

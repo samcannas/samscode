@@ -155,6 +155,16 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  /** Minimize the main window. Available on non-macOS frameless windows. */
+  windowMinimize?: () => Promise<void>;
+  /** Toggle maximize / restore for the main window. Available on non-macOS frameless windows. */
+  windowMaximize?: () => Promise<void>;
+  /** Close the main window. Available on non-macOS frameless windows. */
+  windowClose?: () => Promise<void>;
+  /** Query current maximized state. Available on non-macOS frameless windows. */
+  getWindowIsMaximized?: () => Promise<boolean>;
+  /** Subscribe to maximize / unmaximize state changes. Available on non-macOS frameless windows. */
+  onWindowMaximizedChange?: (listener: (isMaximized: boolean) => void) => () => void;
 }
 
 export interface NativeApi {

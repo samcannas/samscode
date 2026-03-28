@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { FolderIcon, RefreshCcwIcon } from "lucide-react";
+import { TitlebarControls } from "./WindowControlsOverlay";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { SidebarInset } from "~/components/ui/sidebar";
@@ -30,6 +31,7 @@ export function CatalogPageLayout(props: CatalogPageLayoutProps) {
           <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
             {props.title}
           </span>
+          <TitlebarControls />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">

@@ -7,6 +7,7 @@ import "./index.css";
 
 import { getRouter } from "./router";
 import { APP_DISPLAY_NAME } from "./branding";
+import { isMacPlatform } from "./lib/utils";
 
 const history = createHashHistory();
 
@@ -14,6 +15,13 @@ const router = getRouter(history);
 const rootElement = document.getElementById("root") as HTMLElement;
 
 document.title = APP_DISPLAY_NAME;
+
+// On Windows / Linux the native title bar is hidden (`frame: false`) and we
+// render custom window controls inside the header.  This attribute enables
+// CSS adjustments (e.g. extra right padding on drag-region headers).
+if (!isMacPlatform(navigator.platform)) {
+  document.documentElement.dataset.customTitlebar = "";
+}
 
 if (!window.desktopBridge && import.meta.env.MODE !== "test") {
   ReactDOM.createRoot(rootElement).render(

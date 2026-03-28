@@ -93,13 +93,14 @@ function CloseIcon() {
 /* ------------------------------------------------------------------
  * Shared base classes for the control buttons.
  *
- * Height is 32px to sit comfortably within the 52px header.  The
- * width is 36px -- just wide enough to feel balanced without
- * becoming a chunky target.  Rounded-sm keeps it refined.
+ * Buttons stretch to the full height of the 52px header via
+ * `self-stretch` + parent `items-stretch`.  Width is 44px (w-11),
+ * no border-radius — matching the JetBrains / PyCharm titlebar
+ * control style.  Close button uses a solid red (#e81123) on hover.
  * ----------------------------------------------------------------*/
 
 const baseButtonClasses =
-  "inline-flex items-center justify-center h-8 w-9 rounded-sm text-muted-foreground/70 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "inline-flex items-center justify-center w-11 self-stretch text-muted-foreground/70 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 export function WindowControls({
   isMaximized,
@@ -109,14 +110,14 @@ export function WindowControls({
 }: WindowControlsProps) {
   return (
     <div
-      className="flex items-center gap-0.5"
+      className="flex items-stretch"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       {/* Minimize */}
       <button
         type="button"
         aria-label="Minimize"
-        className={`${baseButtonClasses} hover:bg-accent hover:text-foreground`}
+        className={`${baseButtonClasses} hover:bg-white/10 hover:text-foreground`}
         onClick={onMinimize}
       >
         <MinimizeIcon />
@@ -126,7 +127,7 @@ export function WindowControls({
       <button
         type="button"
         aria-label={isMaximized ? "Restore" : "Maximize"}
-        className={`${baseButtonClasses} hover:bg-accent hover:text-foreground`}
+        className={`${baseButtonClasses} hover:bg-white/10 hover:text-foreground`}
         onClick={onMaximize}
       >
         {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
@@ -136,7 +137,7 @@ export function WindowControls({
       <button
         type="button"
         aria-label="Close"
-        className={`${baseButtonClasses} hover:bg-red-500/15 hover:text-red-600 dark:hover:bg-red-500/20 dark:hover:text-red-400`}
+        className={`${baseButtonClasses} hover:bg-[#e81123] hover:text-white`}
         onClick={onClose}
       >
         <CloseIcon />
