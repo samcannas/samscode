@@ -10,13 +10,14 @@
  * Thread-specific items are hidden when their callbacks are absent.
  */
 
-import { type EditorId } from "@samscode/contracts";
+import { type EditorId, type ThreadId } from "@samscode/contracts";
 import { DiffIcon, FolderClosedIcon, MenuIcon, TerminalSquareIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { readNativeApi } from "../nativeApi";
 import { usePreferredEditor } from "../editorPreferences";
 import { isMacPlatform, isWindowsPlatform } from "../lib/utils";
 import { AntigravityIcon, CursorIcon, VisualStudioCode, Zed } from "./Icons";
+import GitActionsControl from "./GitActionsControl";
 
 interface HamburgerMenuProps {
   className?: string;
@@ -28,6 +29,10 @@ interface HamburgerMenuProps {
   terminalOpen?: boolean | undefined;
   diffOpen?: boolean | undefined;
   isGitRepo?: boolean | undefined;
+  /** Git working directory for commit/push/PR actions. */
+  gitCwd?: string | null | undefined;
+  /** Active thread ID for git actions. */
+  activeThreadId?: ThreadId | null | undefined;
   onToggleTerminal?: (() => void) | undefined;
   onToggleDiff?: (() => void) | undefined;
 }
@@ -59,6 +64,8 @@ export function HamburgerMenu({
   terminalOpen = false,
   diffOpen = false,
   isGitRepo = false,
+  gitCwd,
+  activeThreadId,
   onToggleTerminal,
   onToggleDiff,
 }: HamburgerMenuProps) {
@@ -87,7 +94,8 @@ export function HamburgerMenu({
   const hasTerminalAction = onToggleTerminal !== undefined;
   const hasDiffAction = onToggleDiff !== undefined;
   const hasEditorOptions = editorOptions.length > 0 && openInCwd;
-  const hasAnyItem = hasTerminalAction || hasDiffAction || hasEditorOptions;
+  const hasGitActions = gitCwd != null;
+  const hasAnyItem = hasTerminalAction || hasDiffAction || hasEditorOptions || hasGitActions;
 
   return (
     <div className="relative">
@@ -173,6 +181,24 @@ export function HamburgerMenu({
                 <DiffIcon className="size-4 opacity-60" />
                 <span>{diffOpen ? "Hide diff panel" : "Show diff panel"}</span>
               </button>
+            )}
+
+            {/* Git actions (commit, push, PR) */}
+            {hasGitActions && (
+              <>
+                {(hasEditorOptions || hasTerminalAction || hasDiffAction) && (
+                  <div className="h-px bg-white/[0.06] my-1" />
+                )}
+                <div className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 select-none">
+                  Git
+                </div>
+                <div className="px-3 py-1">
+                  <GitActionsControl
+                    gitCwd={gitCwd ?? null}
+                    activeThreadId={activeThreadId ?? null}
+                  />
+                </div>
+              </>
             )}
 
             {!hasAnyItem && (

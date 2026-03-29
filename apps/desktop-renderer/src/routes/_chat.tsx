@@ -235,6 +235,8 @@ function ChatRouteLayout() {
             terminalOpen={terminalOpen}
             diffOpen={diffOpen}
             isGitRepo={isGitRepo}
+            gitCwd={gitCwd}
+            activeThreadId={routeThreadId}
             onToggleTerminal={onToggleTerminal}
             onToggleDiff={onToggleDiff}
           />
