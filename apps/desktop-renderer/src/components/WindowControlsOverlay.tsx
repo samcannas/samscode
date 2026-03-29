@@ -29,7 +29,7 @@ export function TitlebarControls() {
 
   return (
     <div
-      className="-mr-3 ml-auto flex shrink-0 self-stretch items-stretch sm:-mr-5"
+      className="flex shrink-0 self-stretch items-stretch"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       <WindowControls

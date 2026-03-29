@@ -51,6 +51,14 @@ interface BranchToolbarBranchSelectorProps {
   onSetThreadBranch: (branch: string | null, worktreePath: string | null) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest?: () => void;
+  /** Optional custom render element for the trigger button (passed as `render` to ComboboxTrigger). */
+  triggerRender?: React.ReactElement;
+  /** Optional className override for the trigger. */
+  triggerClassName?: string;
+  /** Popup alignment override. Defaults to "end". */
+  popupAlign?: "start" | "end";
+  /** Popup side override. Defaults to "top". */
+  popupSide?: "top" | "bottom";
 }
 
 function toBranchActionErrorMessage(error: unknown): string {
@@ -82,6 +90,10 @@ export function BranchToolbarBranchSelector({
   onSetThreadBranch,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
+  triggerRender,
+  triggerClassName,
+  popupAlign = "end",
+  popupSide = "top",
 }: BranchToolbarBranchSelectorProps) {
   const queryClient = useQueryClient();
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
@@ -414,14 +426,14 @@ export function BranchToolbarBranchSelector({
       value={resolvedActiveBranch}
     >
       <ComboboxTrigger
-        render={<Button variant="ghost" size="xs" />}
-        className="text-muted-foreground/70 hover:text-foreground/80"
+        render={triggerRender ?? <Button variant="ghost" size="xs" />}
+        className={triggerClassName ?? "text-muted-foreground/70 hover:text-foreground/80"}
         disabled={(branchesQuery.isLoading && branches.length === 0) || isBranchActionPending}
       >
         <span className="max-w-[240px] truncate">{triggerLabel}</span>
         <ChevronDownIcon />
       </ComboboxTrigger>
-      <ComboboxPopup align="end" side="top" className="w-80">
+      <ComboboxPopup align={popupAlign} side={popupSide} className="w-80">
         <div className="border-b p-1">
           <ComboboxInput
             className="[&_input]:font-sans rounded-md"

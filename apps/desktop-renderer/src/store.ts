@@ -2,6 +2,7 @@ import { Fragment, type ReactNode, createElement, useEffect } from "react";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   type ProviderKind,
+  type ProjectId,
   ThreadId,
   type OrchestrationReadModel,
   type OrchestrationSessionStatus,
@@ -21,6 +22,8 @@ export interface AppState {
   projects: Project[];
   threads: Thread[];
   threadsHydrated: boolean;
+  activeProjectId: ProjectId | null;
+  activeSidePanel: "threads" | "commit" | null;
 }
 
 const PERSISTED_STATE_KEY = "samscode:renderer-state:v9";
@@ -29,6 +32,8 @@ const initialState: AppState = {
   projects: [],
   threads: [],
   threadsHydrated: false,
+  activeProjectId: null,
+  activeSidePanel: "threads",
 };
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
@@ -419,6 +424,8 @@ interface AppStore extends AppState {
   reorderProjects: (draggedProjectId: Project["id"], targetProjectId: Project["id"]) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (threadId: ThreadId, branch: string | null, worktreePath: string | null) => void;
+  setActiveProject: (projectId: ProjectId | null) => void;
+  setActiveSidePanel: (panel: "threads" | "commit" | null) => void;
 }
 
 export const useStore = create<AppStore>((set) => ({
@@ -435,6 +442,8 @@ export const useStore = create<AppStore>((set) => ({
   setError: (threadId, error) => set((state) => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set((state) => setThreadBranch(state, threadId, branch, worktreePath)),
+  setActiveProject: (projectId) => set({ activeProjectId: projectId }),
+  setActiveSidePanel: (panel) => set({ activeSidePanel: panel }),
 }));
 
 // Persist state changes with debouncing to avoid localStorage thrashing

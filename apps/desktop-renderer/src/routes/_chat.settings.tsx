@@ -36,7 +36,6 @@ import {
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { TitlebarControls } from "~/components/WindowControlsOverlay";
 import { updateSpeechToTextState, useSpeechToTextState } from "~/speechToText/speechToTextState";
 import { UpstreamSyncSection } from "~/components/UpstreamSyncSection";
 import {
@@ -406,15 +405,8 @@ function SettingsRouteView() {
   );
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="h-full min-h-0 overflow-hidden overscroll-y-none rounded-tl-lg border-l border-t border-floating-border bg-floating-surface text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-          <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
-            Settings
-          </span>
-          <TitlebarControls />
-        </div>
-
         <div className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
             <header className="space-y-1">

@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { FolderIcon, RefreshCcwIcon } from "lucide-react";
-import { TitlebarControls } from "./WindowControlsOverlay";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { SidebarInset } from "~/components/ui/sidebar";
@@ -24,16 +23,8 @@ export interface CatalogPageLayoutProps {
 
 export function CatalogPageLayout(props: CatalogPageLayoutProps) {
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="h-full min-h-0 overflow-hidden overscroll-y-none rounded-tl-lg border-l border-t border-floating-border bg-floating-surface text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        {/* Titlebar drag region */}
-        <div className="drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5">
-          <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
-            {props.title}
-          </span>
-          <TitlebarControls />
-        </div>
-
         <div className="flex-1 overflow-y-auto p-4">
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
             {/* Header: title + subtitle */}
