@@ -1,15 +1,9 @@
 /**
  * JetBrains-style narrow icon rail on the left edge.
- * Contains tool window toggles: Files/Threads, Commit, and bottom-aligned Settings.
+ * Contains tool window toggles plus navigation shortcuts for non-thread pages.
  */
 
-import {
-  MessagesSquareIcon,
-  GitCommitHorizontalIcon,
-  SettingsIcon,
-  BookCopyIcon,
-  BotIcon,
-} from "lucide-react";
+import { MessagesSquareIcon, GitCommitHorizontalIcon, BookCopyIcon, BotIcon } from "lucide-react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
 import { useStore } from "../store";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -96,7 +90,6 @@ export function IconRail({ className = "" }: IconRailProps) {
   const setActiveSidePanel = useStore((s) => s.setActiveSidePanel);
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
-  const isOnSettings = pathname === "/settings";
   const isOnSkills = pathname === "/skills";
   const isOnAgents = pathname === "/agents";
 
@@ -129,7 +122,7 @@ export function IconRail({ className = "" }: IconRailProps) {
         />
       </div>
 
-      {/* Bottom group: navigation + settings */}
+      {/* Bottom group: navigation */}
       <div className="mt-auto flex flex-col items-center gap-0.5 pb-1">
         <NavRailButton
           icon={<BookCopyIcon className="size-[18px]" />}
@@ -142,12 +135,6 @@ export function IconRail({ className = "" }: IconRailProps) {
           label="Agents"
           active={isOnAgents}
           onClick={() => void navigate({ to: "/agents" })}
-        />
-        <NavRailButton
-          icon={<SettingsIcon className="size-[18px]" />}
-          label="Settings"
-          active={isOnSettings}
-          onClick={() => void navigate({ to: "/settings" })}
         />
       </div>
     </div>
