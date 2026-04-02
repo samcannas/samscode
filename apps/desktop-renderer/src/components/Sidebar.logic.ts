@@ -265,6 +265,30 @@ export function getVisibleThreadsForProject(input: {
   };
 }
 
+export function getFallbackThreadIdAfterDelete<
+  T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt" | "messages">,
+>(input: {
+  threads: readonly T[];
+  deletedThreadId: T["id"];
+  deletedThreadIds?: ReadonlySet<T["id"]>;
+  sortOrder: SidebarThreadSortOrder;
+}): T["id"] | null {
+  const deletedThread = input.threads.find((thread) => thread.id === input.deletedThreadId);
+  if (!deletedThread) {
+    return null;
+  }
+
+  const deletedThreadIds = input.deletedThreadIds ?? new Set<T["id"]>([input.deletedThreadId]);
+  const remainingProjectThreads = sortThreadsForSidebar(
+    input.threads.filter(
+      (thread) => thread.projectId === deletedThread.projectId && !deletedThreadIds.has(thread.id),
+    ),
+    input.sortOrder,
+  );
+
+  return remainingProjectThreads[0]?.id ?? null;
+}
+
 function toSortableTimestamp(iso: string | undefined): number | null {
   if (!iso) return null;
   const ms = Date.parse(iso);

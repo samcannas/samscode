@@ -41,6 +41,12 @@ const CLAUDE_EFFORT_LABELS: Record<ClaudeCodeEffort, string> = {
 
 const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
+function stripInjectedUltrathinkPrefix(prompt: string): string {
+  return prompt.startsWith(ULTRATHINK_PROMPT_PREFIX)
+    ? prompt.slice(ULTRATHINK_PROMPT_PREFIX.length)
+    : prompt;
+}
+
 function getSelectedClaudeTraits(
   model: string | null | undefined,
   prompt: string,
@@ -51,6 +57,7 @@ function getSelectedClaudeTraits(
   fastModeEnabled: boolean;
   options: ReadonlyArray<ClaudeCodeEffort>;
   ultrathinkPromptControlled: boolean;
+  ultrathinkActive: boolean;
   supportsFastMode: boolean;
 } {
   const options = getReasoningEffortOptions(PROVIDER, model);
@@ -69,13 +76,17 @@ function getSelectedClaudeTraits(
     ? (modelOptions?.thinking ?? true)
     : null;
   const supportsFastMode = supportsClaudeFastMode(model);
+  const ultrathinkActive =
+    supportsClaudeUltrathinkKeyword(model) && isClaudeUltrathinkPrompt(prompt);
   return {
     effort,
     thinkingEnabled,
     fastModeEnabled: supportsFastMode && modelOptions?.fastMode === true,
     options,
     ultrathinkPromptControlled:
-      supportsClaudeUltrathinkKeyword(model) && isClaudeUltrathinkPrompt(prompt),
+      supportsClaudeUltrathinkKeyword(model) &&
+      isClaudeUltrathinkPrompt(stripInjectedUltrathinkPrefix(prompt)),
+    ultrathinkActive,
     supportsFastMode,
   };
 }
@@ -101,13 +112,13 @@ export const ClaudeTraitsMenuContent = memo(function ClaudeTraitsMenuContentImpl
     fastModeEnabled,
     options,
     ultrathinkPromptControlled,
+    ultrathinkActive,
     supportsFastMode,
   } = getSelectedClaudeTraits(model, prompt, modelOptions);
   const defaultReasoningEffort = getDefaultReasoningEffort(PROVIDER);
 
   const handleEffortChange = useCallback(
     (value: ClaudeCodeEffort) => {
-      if (ultrathinkPromptControlled) return;
       if (!value) return;
       const nextEffort = options.find((option) => option === value);
       if (!nextEffort) return;
@@ -118,6 +129,9 @@ export const ClaudeTraitsMenuContent = memo(function ClaudeTraitsMenuContentImpl
             : applyClaudePromptEffortPrefix(prompt, "ultrathink");
         onPromptChange(nextPrompt);
         return;
+      }
+      if (ultrathinkActive) {
+        onPromptChange(stripInjectedUltrathinkPrefix(prompt));
       }
       setProviderModelOptions(
         threadId,
@@ -130,7 +144,7 @@ export const ClaudeTraitsMenuContent = memo(function ClaudeTraitsMenuContentImpl
       );
     },
     [
-      ultrathinkPromptControlled,
+      ultrathinkActive,
       model,
       modelOptions,
       onPromptChange,
@@ -226,10 +240,10 @@ export const ClaudeTraitsPicker = memo(function ClaudeTraitsPicker({
   const draft = useComposerThreadDraft(threadId);
   const prompt = draft.prompt;
   const modelOptions = draft.modelOptions?.[PROVIDER];
-  const { effort, thinkingEnabled, fastModeEnabled, ultrathinkPromptControlled, supportsFastMode } =
+  const { effort, thinkingEnabled, fastModeEnabled, ultrathinkActive, supportsFastMode } =
     getSelectedClaudeTraits(model, prompt, modelOptions);
   const triggerLabel = [
-    ultrathinkPromptControlled
+    ultrathinkActive
       ? "Ultrathink"
       : effort
         ? CLAUDE_EFFORT_LABELS[effort]

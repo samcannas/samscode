@@ -68,6 +68,7 @@ const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const BASE_DIR = process.env.SAMSCODE_HOME?.trim() || Path.join(OS.homedir(), ".samscode");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "sc";
@@ -839,6 +840,11 @@ async function installDownloadedUpdate(): Promise<{ accepted: boolean; completed
   clearUpdatePollTimer();
   try {
     await stopBackendAndWaitForExit();
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.destroy();
+      }
+    }
     autoUpdater.quitAndInstall();
     return { accepted: true, completed: true };
   } catch (error: unknown) {
@@ -997,7 +1003,6 @@ function backendEnv(): NodeJS.ProcessEnv {
     SAMSCODE_PORT: String(backendPort),
     SAMSCODE_HOME: BASE_DIR,
     SAMSCODE_CATALOG_ROOT: resolveCatalogRoot(),
-    SAMSCODE_AUTH_TOKEN: backendAuthToken,
   };
 }
 
@@ -1077,10 +1082,22 @@ function startBackend(): void {
     env: {
       ...backendEnv(),
       ELECTRON_RUN_AS_NODE: "1",
+      SAMSCODE_BOOTSTRAP_FD: "3",
     },
-    stdio: captureBackendLogs ? ["ignore", "pipe", "pipe"] : "inherit",
+    stdio: captureBackendLogs
+      ? ["ignore", "pipe", "pipe", "pipe"]
+      : ["ignore", "inherit", "inherit", "pipe"],
   });
   backendProcess = child;
+  const bootstrapStream = child.stdio[3];
+  if (bootstrapStream && "write" in bootstrapStream && "end" in bootstrapStream) {
+    bootstrapStream.write(
+      JSON.stringify({
+        authToken: backendAuthToken,
+      }),
+    );
+    bootstrapStream.end();
+  }
   let backendSessionClosed = false;
   const closeBackendSession = (details: string) => {
     if (backendSessionClosed) return;
@@ -1350,6 +1367,11 @@ function registerIpcHandlers(): void {
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
 
+  ipcMain.removeAllListeners(GET_WS_URL_CHANNEL);
+  ipcMain.on(GET_WS_URL_CHANNEL, (event) => {
+    event.returnValue = backendWsUrl;
+  });
+
   ipcMain.removeHandler(UPDATE_CHECK_CHANNEL);
   ipcMain.handle(UPDATE_CHECK_CHANNEL, async () => checkForUpdates("renderer"));
 
@@ -1535,7 +1557,6 @@ async function bootstrap(): Promise<void> {
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
   backendAuthToken = Crypto.randomBytes(24).toString("hex");
   backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
-  process.env.SAMSCODE_DESKTOP_WS_URL = backendWsUrl;
   writeDesktopLogHeader(`bootstrap resolved websocket url=${backendWsUrl}`);
 
   registerIpcHandlers();
@@ -1582,6 +1603,9 @@ app
   });
 
 app.on("window-all-closed", () => {
+  if (isQuitting) {
+    return;
+  }
   if (process.platform !== "darwin") {
     app.quit();
   }

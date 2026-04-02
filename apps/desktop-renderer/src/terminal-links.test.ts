@@ -43,6 +43,18 @@ describe("extractTerminalLinks", () => {
       },
     ]);
   });
+
+  it("linkifies windows absolute paths written with forward slashes", () => {
+    const line = "See C:/Users/sam/project/src/main.ts:12 for details";
+    expect(extractTerminalLinks(line)).toEqual([
+      {
+        kind: "path",
+        text: "C:/Users/sam/project/src/main.ts:12",
+        start: 4,
+        end: 37,
+      },
+    ]);
+  });
 });
 
 describe("resolvePathLinkTarget", () => {

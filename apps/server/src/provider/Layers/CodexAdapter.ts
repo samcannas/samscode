@@ -601,6 +601,19 @@ function mapToRuntimeEvents(
     ];
   }
 
+  if (event.method === "process/stderr") {
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "runtime.warning",
+        payload: {
+          message: event.message ?? "Codex runtime stderr output",
+          ...(event.payload !== undefined ? { detail: event.payload } : {}),
+        },
+      },
+    ];
+  }
+
   if (event.method === "session/exited" || event.method === "session/closed") {
     return [
       {

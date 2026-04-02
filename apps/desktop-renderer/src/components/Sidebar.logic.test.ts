@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
   getVisibleThreadsForProject,
   hasUnseenCompletion,
@@ -456,6 +457,89 @@ describe("getVisibleThreadsForProject", () => {
       ThreadId.makeUnsafe("thread-6"),
       ThreadId.makeUnsafe("thread-8"),
     ]);
+  });
+});
+
+describe("getFallbackThreadIdAfterDelete", () => {
+  it("picks the top remaining thread from the deleted thread's own project", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-a"),
+        projectId: ProjectId.makeUnsafe("project-1"),
+        updatedAt: "2026-03-09T10:03:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-b"),
+        projectId: ProjectId.makeUnsafe("project-1"),
+        updatedAt: "2026-03-09T10:02:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-c"),
+        projectId: ProjectId.makeUnsafe("project-2"),
+        updatedAt: "2026-03-09T10:10:00.000Z",
+      }),
+    ];
+
+    expect(
+      getFallbackThreadIdAfterDelete({
+        threads,
+        deletedThreadId: ThreadId.makeUnsafe("thread-b"),
+        sortOrder: "updated_at",
+      }),
+    ).toBe(ThreadId.makeUnsafe("thread-a"));
+  });
+
+  it("excludes other threads deleted in the same action", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-a"),
+        projectId: ProjectId.makeUnsafe("project-1"),
+        updatedAt: "2026-03-09T10:03:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-b"),
+        projectId: ProjectId.makeUnsafe("project-1"),
+        updatedAt: "2026-03-09T10:02:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-c"),
+        projectId: ProjectId.makeUnsafe("project-1"),
+        updatedAt: "2026-03-09T10:01:00.000Z",
+      }),
+    ];
+
+    expect(
+      getFallbackThreadIdAfterDelete({
+        threads,
+        deletedThreadId: ThreadId.makeUnsafe("thread-b"),
+        deletedThreadIds: new Set([
+          ThreadId.makeUnsafe("thread-a"),
+          ThreadId.makeUnsafe("thread-b"),
+        ]),
+        sortOrder: "updated_at",
+      }),
+    ).toBe(ThreadId.makeUnsafe("thread-c"));
+  });
+
+  it("returns null when the deleted thread's project has no surviving threads", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-a"),
+        projectId: ProjectId.makeUnsafe("project-1"),
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-b"),
+        projectId: ProjectId.makeUnsafe("project-2"),
+      }),
+    ];
+
+    expect(
+      getFallbackThreadIdAfterDelete({
+        threads,
+        deletedThreadId: ThreadId.makeUnsafe("thread-a"),
+        sortOrder: "updated_at",
+      }),
+    ).toBeNull();
   });
 });
 

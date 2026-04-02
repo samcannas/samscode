@@ -16,6 +16,7 @@ import {
   type RuntimeMode,
   type ServerConfigShape,
 } from "./config";
+import { readBootstrapConfig } from "./bootstrap";
 import { fixPath, resolveBaseDir } from "./os-jank";
 import * as SqlitePersistence from "./persistence/Layers/Sqlite";
 import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
@@ -117,6 +118,7 @@ const ServerConfigLive = (input: CliInput) =>
             new StartupError({ message: "Failed to read environment configuration", cause }),
         ),
       );
+      const bootstrap = readBootstrapConfig();
 
       const mode = Option.getOrElse(input.mode, () => env.mode);
 
@@ -138,7 +140,8 @@ const ServerConfigLive = (input: CliInput) =>
         Option.getOrUndefined(input.samscodeHome) ?? env.samscodeHome,
       );
       const derivedPaths = yield* deriveServerPaths(baseDir, desktopRendererUrl);
-      const authToken = Option.getOrUndefined(input.authToken) ?? env.authToken;
+      const authToken =
+        Option.getOrUndefined(input.authToken) ?? bootstrap.authToken ?? env.authToken;
       const autoBootstrapProjectFromCwd = resolveBooleanFlag(
         input.autoBootstrapProjectFromCwd,
         env.autoBootstrapProjectFromCwd ?? mode === "headless",

@@ -20,6 +20,7 @@ import { toastManager } from "./ui/toast";
 import { sortProjectsForSidebar, sortThreadsForSidebar } from "./Sidebar.logic";
 import { type Project } from "../types";
 import { getAdjacentProjectIdInCycle } from "./ProjectSelector.logic";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 const PROJECT_SCROLL_STEP_PX = 36;
 
@@ -49,6 +50,22 @@ export function ProjectSelector({ className = "" }: ProjectSelectorProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const wheelDeltaRef = useRef(0);
+  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
+    onCopy: (ctx) => {
+      toastManager.add({
+        type: "success",
+        title: "Path copied",
+        description: ctx.path,
+      });
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: "error",
+        title: "Failed to copy path",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    },
+  });
 
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) ?? projects[0] ?? null,
@@ -133,9 +150,17 @@ export function ProjectSelector({ className = "" }: ProjectSelectorProps) {
       if (!api) return;
 
       const clicked = await api.contextMenu.show(
-        [{ id: "remove", label: "Remove project", destructive: true }],
+        [
+          { id: "copy-path", label: "Copy Project Path" },
+          { id: "remove", label: "Remove project", destructive: true },
+        ],
         { x: event.clientX, y: event.clientY },
       );
+
+      if (clicked === "copy-path") {
+        copyPathToClipboard(project.cwd, { path: project.cwd });
+        return;
+      }
 
       if (clicked !== "remove") return;
 
@@ -159,7 +184,7 @@ export function ProjectSelector({ className = "" }: ProjectSelectorProps) {
         }
       }
     },
-    [activeProjectId, navigate, projects, setActiveProject],
+    [activeProjectId, copyPathToClipboard, navigate, projects, setActiveProject],
   );
 
   // Close dropdown when clicking outside

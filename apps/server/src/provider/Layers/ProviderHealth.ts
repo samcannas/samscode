@@ -46,7 +46,12 @@ function nonEmptyTrimmed(value: string | undefined): string | undefined {
 function isCommandMissingCause(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const lower = error.message.toLowerCase();
-  return lower.includes("enoent") || lower.includes("notfound");
+  return (
+    lower.includes("enoent") ||
+    lower.includes("notfound") ||
+    lower.includes("9009") ||
+    lower.includes("is not recognized as an internal or external command")
+  );
 }
 
 function detailFromResult(

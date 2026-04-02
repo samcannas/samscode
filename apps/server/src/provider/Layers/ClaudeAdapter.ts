@@ -149,6 +149,7 @@ interface ClaudeSessionContext {
   lastKnownContextWindow: number | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
+  activeModel: string | undefined;
   stopped: boolean;
 }
 
@@ -2632,6 +2633,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           lastKnownContextWindow: undefined,
           lastAssistantUuid: resumeState?.resumeSessionAt,
           lastThreadStartedId: undefined,
+          activeModel: input.model,
           stopped: false,
         };
         yield* Ref.set(contextRef, context);
@@ -2710,11 +2712,12 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           yield* completeTurn(context, "completed");
         }
 
-        if (input.model) {
+        if (input.model && input.model !== context.activeModel) {
           yield* Effect.tryPromise({
             try: () => context.query.setModel(input.model),
             catch: (cause) => toRequestError(input.threadId, "turn/setModel", cause),
           });
+          context.activeModel = input.model;
         }
 
         // Apply interaction mode by switching the SDK's permission mode.

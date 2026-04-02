@@ -33,12 +33,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T19:56:02Z",
       "category": "infra",
-      "areas": [
-        "Contracts",
-        "Desktop app",
-        "Release and CI",
-        "Server runtime"
-      ],
+      "areas": ["Contracts", "Desktop app", "Release and CI", "Server runtime"],
       "changedFiles": [
         "apps/desktop/package.json",
         "apps/server/package.json",
@@ -59,12 +54,8 @@
       "summary": "",
       "authoredAt": "2026-03-24T23:38:56Z",
       "category": "maintenance",
-      "areas": [
-        "General"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/GitActionsControl.tsx"
-      ],
+      "areas": ["General"],
+      "changedFiles": ["apps/web/src/components/GitActionsControl.tsx"],
       "changeSummary": "Upstream keeps git progress timing state intact when websocket completion events arrive so the loading toast retains its \"Running for Xs\" description until the HTTP success or error handler replaces it.",
       "forkValueSummary": "Sam's Code also shows git action progress toasts, but they are driven by a single request lifecycle rather than separate websocket progress completion events plus a later HTTP response.",
       "recommendedDecision": "ignore",
@@ -78,11 +69,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T22:40:32-07:00",
       "category": "maintenance",
-      "areas": [
-        "Contracts",
-        "Server runtime",
-        "Shared runtime"
-      ],
+      "areas": ["Contracts", "Server runtime", "Shared runtime"],
       "changedFiles": [
         "apps/server/integration/orchestrationEngine.integration.test.ts",
         "apps/server/src/checkpointing/Layers/CheckpointDiffQuery.test.ts",
@@ -163,9 +150,7 @@
       "summary": "",
       "authoredAt": "2026-03-24T23:38:53-07:00",
       "category": "maintenance",
-      "areas": [
-        "Desktop renderer"
-      ],
+      "areas": ["Desktop renderer"],
       "changedFiles": [
         "apps/web/src/components/Sidebar.logic.test.ts",
         "apps/web/src/components/Sidebar.logic.ts",
@@ -184,10 +169,7 @@
       "summary": "Co-authored-by: codex <codex@users.noreply.github.com>",
       "authoredAt": "2026-03-25T09:45:13-07:00",
       "category": "fix",
-      "areas": [
-        "Desktop app",
-        "Server runtime"
-      ],
+      "areas": ["Desktop app", "Server runtime"],
       "changedFiles": [
         "apps/desktop/src/main.ts",
         "apps/desktop/src/preload.ts",
@@ -212,13 +194,8 @@
       "summary": "Co-authored-by: Jakob Guldberg Aaes <jakob1379@gmali.com>",
       "authoredAt": "2026-03-25T16:48:07Z",
       "category": "docs",
-      "areas": [
-        "Docs",
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "CLAUDE.md"
-      ],
+      "areas": ["Docs", "Server runtime"],
+      "changedFiles": ["CLAUDE.md"],
       "changeSummary": "Upstream fixes the `CLAUDE.md` link by correcting the symlink payload so it points cleanly to `AGENTS.md` without a trailing newline.",
       "forkValueSummary": "Sam's Code already carries `CLAUDE.md` as a plain tracked file that contains `AGENTS.md`, so the upstream symlink-specific fix does not add value to this fork.",
       "recommendedDecision": "ignore",
@@ -232,9 +209,7 @@
       "summary": "",
       "authoredAt": "2026-03-25T16:57:09Z",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/web/src/components/chat/ProviderModelPicker.browser.tsx",
         "apps/web/src/components/chat/ProviderModelPicker.tsx"
@@ -252,10 +227,7 @@
       "summary": "Co-authored-by: keyzou <keyzou@users.noreply.github.com>\nCo-authored-by: Claude Opus 4.6 <noreply@anthropic.com>\nCo-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-25T12:08:28-07:00",
       "category": "feature",
-      "areas": [
-        "Contracts",
-        "Server runtime"
-      ],
+      "areas": ["Contracts", "Server runtime"],
       "changedFiles": [
         "apps/server/src/git/isRepo.ts",
         "apps/server/src/git/Layers/ClaudeTextGeneration.test.ts",
@@ -305,12 +277,8 @@
       "summary": "Co-authored-by: Cursor Agent <cursoragent@cursor.com>\nCo-authored-by: cursor[bot] <206951365+cursor[bot]@users.noreply.github.com>",
       "authoredAt": "2026-03-25T13:01:04-07:00",
       "category": "feature",
-      "areas": [
-        "General"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/ui/toast.tsx"
-      ],
+      "areas": ["General"],
+      "changedFiles": ["apps/web/src/components/ui/toast.tsx"],
       "changeSummary": "Upstream adds an inline copy control for error toast messages and makes toast descriptions selectable text.",
       "forkValueSummary": "Sam's Code uses the same shared toast surface in the desktop renderer for operational failures from git actions, desktop updates, and upstream-sync flows, so copying exact error text would help debugging and support without changing toast semantics.",
       "recommendedDecision": "apply",
@@ -324,12 +292,8 @@
       "summary": "Co-authored-by: morgan ye <morganye@morgans-MacBook-Pro.local>",
       "authoredAt": "2026-03-25T23:59:12Z",
       "category": "fix",
-      "areas": [
-        "Desktop app"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/GitActionsControl.tsx"
-      ],
+      "areas": ["Desktop app"],
+      "changedFiles": ["apps/web/src/components/GitActionsControl.tsx"],
       "changeSummary": "Upstream adds `className=\"shrink-0\"` to the git action button group to stop the horizontal git actions strip from collapsing into the terminal toggle.",
       "forkValueSummary": "Sam's Code moved terminal and git controls into a dropdown menu, so the specific top-bar overlap the upstream patch fixes does not occur in the fork.",
       "recommendedDecision": "ignore",
@@ -343,12 +307,8 @@
       "summary": "",
       "authoredAt": "2026-03-26T02:01:53Z",
       "category": "fix",
-      "areas": [
-        "General"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/ChatView.tsx"
-      ],
+      "areas": ["General"],
+      "changedFiles": ["apps/web/src/components/ChatView.tsx"],
       "changeSummary": "Upstream changes the composer container border highlight from `focus-within:border-ring/45` to `has-focus-visible:border-ring/45` so dismissing a picker does not leave the composer looking focused.",
       "forkValueSummary": "Sam's Code has the same composer wrapper class in `apps/desktop-renderer/src/components/ChatView.tsx` and the same embedded picker pattern, so the fix would remove a stale focus border in the desktop renderer too.",
       "recommendedDecision": "apply",
@@ -362,12 +322,8 @@
       "summary": "",
       "authoredAt": "2026-03-26T02:02:18Z",
       "category": "fix",
-      "areas": [
-        "General"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/ChatView.tsx"
-      ],
+      "areas": ["General"],
+      "changedFiles": ["apps/web/src/components/ChatView.tsx"],
       "changeSummary": "Upstream adds explicit pointer affordance and disabled pointer-event blocking to the circular composer send button in `ChatView` by adding `enabled:cursor-pointer` and `disabled:pointer-events-none` to its class list.",
       "forkValueSummary": "Sam's Code has the same circular raw submit button in the desktop renderer composer, and applying this would align its default send control with the rest of the fork's clickable button behavior.",
       "recommendedDecision": "apply",
@@ -381,12 +337,7 @@
       "summary": "",
       "authoredAt": "2026-03-25T23:58:58-07:00",
       "category": "maintenance",
-      "areas": [
-        "Contracts",
-        "Desktop renderer",
-        "Server runtime",
-        "Shared runtime"
-      ],
+      "areas": ["Contracts", "Desktop renderer", "Server runtime", "Shared runtime"],
       "changedFiles": [
         "apps/server/integration/OrchestrationEngineHarness.integration.ts",
         "apps/server/integration/providerService.integration.test.ts",
@@ -499,11 +450,7 @@
       "summary": "",
       "authoredAt": "2026-03-26T14:31:35-07:00",
       "category": "feature",
-      "areas": [
-        "Contracts",
-        "Server runtime",
-        "Shared runtime"
-      ],
+      "areas": ["Contracts", "Server runtime", "Shared runtime"],
       "changedFiles": [
         "apps/server/src/git/Layers/ClaudeTextGeneration.ts",
         "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
@@ -538,10 +485,7 @@
       "summary": "",
       "authoredAt": "2026-03-27T04:46:43Z",
       "category": "feature",
-      "areas": [
-        "Contracts",
-        "Server runtime"
-      ],
+      "areas": ["Contracts", "Server runtime"],
       "changedFiles": [
         "apps/server/src/open.test.ts",
         "apps/server/src/open.ts",
@@ -562,9 +506,7 @@
       "summary": "",
       "authoredAt": "2026-03-26T21:47:57-07:00",
       "category": "fix",
-      "areas": [
-        "Desktop renderer"
-      ],
+      "areas": ["Desktop renderer"],
       "changedFiles": [
         "apps/web/src/components/GitActionsControl.tsx",
         "apps/web/src/components/chat/ChatHeader.tsx",
@@ -584,9 +526,7 @@
       "summary": "",
       "authoredAt": "2026-03-27T00:08:45-07:00",
       "category": "maintenance",
-      "areas": [
-        "General"
-      ],
+      "areas": ["General"],
       "changedFiles": [
         "apps/web/src/components/BranchToolbar.logic.test.ts",
         "apps/web/src/components/BranchToolbar.logic.ts",
@@ -610,9 +550,7 @@
       "summary": "",
       "authoredAt": "2026-03-27T12:04:28-07:00",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/provider/Layers/ClaudeAdapter.test.ts",
         "apps/server/src/provider/Layers/ClaudeAdapter.ts"
@@ -630,10 +568,7 @@
       "summary": "",
       "authoredAt": "2026-03-27T17:35:49-07:00",
       "category": "feature",
-      "areas": [
-        "Docs",
-        "Server runtime"
-      ],
+      "areas": ["Docs", "Server runtime"],
       "changedFiles": [
         "apps/server/src/provider/Layers/ClaudeAdapter.ts",
         "docs/effect-fn-checklist.md"
@@ -651,9 +586,7 @@
       "summary": "",
       "authoredAt": "2026-03-27T17:38:31-07:00",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/codexAppServerManager.test.ts",
         "apps/server/src/codexAppServerManager.ts",
@@ -673,10 +606,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-27T18:05:14-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime",
-        "Shared runtime"
-      ],
+      "areas": ["Server runtime", "Shared runtime"],
       "changedFiles": [
         "apps/server/src/git/Layers/GitCore.test.ts",
         "apps/server/src/main.test.ts",
@@ -701,12 +631,8 @@
       "summary": "",
       "authoredAt": "2026-03-27T18:43:35-07:00",
       "category": "refactor",
-      "areas": [
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "apps/server/src/provider/Layers/CodexAdapter.ts"
-      ],
+      "areas": ["Server runtime"],
+      "changedFiles": ["apps/server/src/provider/Layers/CodexAdapter.ts"],
       "changeSummary": "Upstream refactors the Codex adapter by naming `Effect.fn` lifecycle helpers and extracting attachment resolution, manager acquisition, and event-listener setup out of the main adapter constructor.",
       "forkValueSummary": "Sam's Code could benefit from future cleanup in this area, but this exact upstream refactor is mostly structural and targets an adapter shape that has already diverged in the fork.",
       "recommendedDecision": "ignore",
@@ -720,13 +646,8 @@
       "summary": "",
       "authoredAt": "2026-03-28T10:26:13-07:00",
       "category": "maintenance",
-      "areas": [
-        "Desktop app",
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "apps/server/src/provider/Layers/ProviderRegistry.test.ts"
-      ],
+      "areas": ["Desktop app", "Server runtime"],
+      "changedFiles": ["apps/server/src/provider/Layers/ProviderRegistry.test.ts"],
       "changeSummary": "Upstream skips a Windows-incompatible ProviderRegistry unit test that writes a bash-based fake `codex` executable to verify PATH inheritance when `CODEX_HOME` is overridden.",
       "forkValueSummary": "Sam's Code already avoids that failure mode by testing Codex health probing through mocked process spawning and separate Windows-aware CLI resolution tests instead of a bash-script fixture.",
       "recommendedDecision": "already-present",
@@ -740,10 +661,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T17:28:56Z",
       "category": "maintenance",
-      "areas": [
-        "Desktop app",
-        "Server runtime"
-      ],
+      "areas": ["Desktop app", "Server runtime"],
       "changedFiles": [
         "apps/server/src/processRunner.ts",
         "apps/server/src/provider/Layers/ClaudeProvider.ts",
@@ -763,12 +681,8 @@
       "summary": "",
       "authoredAt": "2026-03-28T10:34:00-07:00",
       "category": "feature",
-      "areas": [
-        "Desktop app"
-      ],
-      "changedFiles": [
-        ".gitattributes"
-      ],
+      "areas": ["Desktop app"],
+      "changedFiles": [".gitattributes"],
       "changeSummary": "Upstream adds a root `.gitattributes` rule of `* text=auto eol=lf` to stop Windows Git checkouts from rewriting text files to CRLF.",
       "forkValueSummary": "Sam's Code has the same formatter sensitivity because the repo uses `oxfmt` for `bun fmt`, targets Windows desktop builds, and currently has no repository-level line-ending enforcement.",
       "recommendedDecision": "apply",
@@ -782,9 +696,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T10:37:36-07:00",
       "category": "fix",
-      "areas": [
-        "Desktop app"
-      ],
+      "areas": ["Desktop app"],
       "changedFiles": [
         "apps/web/src/terminal-links.test.ts",
         "apps/web/src/terminal-links.ts",
@@ -803,12 +715,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T10:48:34-07:00",
       "category": "feature",
-      "areas": [
-        "Contracts",
-        "Desktop app",
-        "Desktop renderer",
-        "Server runtime"
-      ],
+      "areas": ["Contracts", "Desktop app", "Desktop renderer", "Server runtime"],
       "changedFiles": [
         "apps/desktop/src/main.ts",
         "apps/server/src/checkpointing/Layers/CheckpointDiffQuery.test.ts",
@@ -877,9 +784,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T10:51:01-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts",
         "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts"
@@ -897,13 +802,8 @@
       "summary": "Co-authored-by: smalitobules <207318034+smalitobules@users.noreply.github.com>",
       "authoredAt": "2026-03-28T17:53:29Z",
       "category": "fix",
-      "areas": [
-        "General"
-      ],
-      "changedFiles": [
-        "bun.lock",
-        "package.json"
-      ],
+      "areas": ["General"],
+      "changedFiles": ["bun.lock", "package.json"],
       "changeSummary": "Upstream adds `\"trustedDependencies\": [\"node-pty\"]` at the Bun workspace root so Bun will run `node-pty` install scripts, and records that in `bun.lock`.",
       "forkValueSummary": "Sam's Code also depends on `node-pty` for its server-side terminal subsystem, so trusting that package at the root would protect Linux installs and builds for the fork's terminal feature.",
       "recommendedDecision": "apply",
@@ -917,11 +817,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T18:21:56Z",
       "category": "fix",
-      "areas": [
-        "Desktop app",
-        "Server runtime",
-        "Shared runtime"
-      ],
+      "areas": ["Desktop app", "Server runtime", "Shared runtime"],
       "changedFiles": [
         "apps/desktop/src/syncShellEnvironment.test.ts",
         "apps/desktop/src/syncShellEnvironment.ts",
@@ -943,9 +839,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T11:38:29-07:00",
       "category": "fix",
-      "areas": [
-        "General"
-      ],
+      "areas": ["General"],
       "changedFiles": [
         "apps/web/src/components/chat/CompactComposerControlsMenu.browser.tsx",
         "apps/web/src/components/chat/TraitsPicker.browser.tsx",
@@ -964,13 +858,8 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T18:41:26Z",
       "category": "fix",
-      "areas": [
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "apps/server/src/bootstrap.test.ts",
-        "apps/server/src/bootstrap.ts"
-      ],
+      "areas": ["Server runtime"],
+      "changedFiles": ["apps/server/src/bootstrap.test.ts", "apps/server/src/bootstrap.ts"],
       "changeSummary": "Upstream makes server bootstrap resilient when duplicating an inherited fd through /proc/self/fd fails, falling back to reading directly from the inherited fd.",
       "forkValueSummary": "Sam's Code boots its desktop server from environment variables and runs Codex app-server over plain stdio pipes, so this exact bootstrap-fd fallback path does not exist in the fork.",
       "recommendedDecision": "ignore",
@@ -984,12 +873,8 @@
       "summary": "Co-authored-by: Daniel Schwarz <daniel.schwarz@serviceware-se.com>",
       "authoredAt": "2026-03-28T11:51:44-07:00",
       "category": "fix",
-      "areas": [
-        "Desktop app"
-      ],
-      "changedFiles": [
-        "apps/desktop/src/main.ts"
-      ],
+      "areas": ["Desktop app"],
+      "changedFiles": ["apps/desktop/src/main.ts"],
       "changeSummary": "Upstream hardens Windows auto-update install by destroying every Electron window before invoking the NSIS installer and by preventing the non-macOS `window-all-closed` handler from calling `app.quit()` once quitting is already in progress.",
       "forkValueSummary": "Sam's Code uses the same `electron-updater` install path and ships a Windows NSIS target, so this would directly improve update reliability during installer handoff.",
       "recommendedDecision": "apply",
@@ -1003,12 +888,8 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T18:56:46Z",
       "category": "fix",
-      "areas": [
-        "Desktop renderer"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/Sidebar.tsx"
-      ],
+      "areas": ["Desktop renderer"],
+      "changedFiles": ["apps/web/src/components/Sidebar.tsx"],
       "changeSummary": "Upstream adds a non-destructive project menu action to copy the selected project's filesystem path before the existing remove-project action.",
       "forkValueSummary": "Sam's Code has the same missing affordance in its desktop renderer project picker, and the fork already has reusable clipboard and context-menu primitives that make this a straightforward UX consistency win.",
       "recommendedDecision": "apply",
@@ -1022,12 +903,8 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T11:59:56-07:00",
       "category": "fix",
-      "areas": [
-        "Desktop renderer"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/ChatMarkdown.tsx"
-      ],
+      "areas": ["Desktop renderer"],
+      "changedFiles": ["apps/web/src/components/ChatMarkdown.tsx"],
       "changeSummary": "Upstream hardens external chat markdown links by changing the fallback anchor rel from \"noreferrer\" to \"noopener noreferrer\".",
       "forkValueSummary": "Sam's Code has the same chat-markdown external-link branch in the desktop renderer, so the upstream hardening applies directly to local chat, plan, and proposed-plan markdown surfaces.",
       "recommendedDecision": "apply",
@@ -1041,9 +918,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T22:01:37Z",
       "category": "maintenance",
-      "areas": [
-        "Desktop renderer"
-      ],
+      "areas": ["Desktop renderer"],
       "changedFiles": [
         "apps/web/src/components/settings/SettingsSidebarNav.tsx",
         "apps/web/src/routes/settings.tsx"
@@ -1061,10 +936,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T15:44:13-07:00",
       "category": "feature",
-      "areas": [
-        "Desktop app",
-        "Server runtime"
-      ],
+      "areas": ["Desktop app", "Server runtime"],
       "changedFiles": [
         ".gitignore",
         "apps/desktop/src/main.ts",
@@ -1087,12 +959,8 @@
       "summary": "",
       "authoredAt": "2026-03-28T15:49:53-07:00",
       "category": "fix",
-      "areas": [
-        "Release and CI"
-      ],
-      "changedFiles": [
-        ".github/workflows/pr-size.yml"
-      ],
+      "areas": ["Release and CI"],
+      "changedFiles": [".github/workflows/pr-size.yml"],
       "changeSummary": "Upstream changes the PR-size workflow from GitHub's coarse PR file metadata to a checked-out git diff that ignores whitespace and blank lines and excludes test-only paths before assigning the size label.",
       "forkValueSummary": "Sam's Code would only gain slightly more nuanced PR-size labels on formatting-heavy or test-only PRs, but the local workflow and repo layout do not match the main benefit of the upstream change.",
       "recommendedDecision": "ignore",
@@ -1106,12 +974,8 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T15:58:37-07:00",
       "category": "fix",
-      "areas": [
-        "Desktop renderer"
-      ],
-      "changedFiles": [
-        "apps/web/src/components/Sidebar.tsx"
-      ],
+      "areas": ["Desktop renderer"],
+      "changedFiles": ["apps/web/src/components/Sidebar.tsx"],
       "changeSummary": "Upstream removes a nested `Collapsible` wrapper around each project’s thread sublist in the web sidebar and instead keeps the container mounted while conditionally rendering thread rows, which avoids odd thread-panel UI states when expanding or hiding project threads.",
       "forkValueSummary": "Sam's Code also has a sidebar thread list with preview expansion, but its renderer uses a different architecture: project switching is separate from the thread list and the sidebar renders a flat list for only the active project.",
       "recommendedDecision": "ignore",
@@ -1125,10 +989,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T23:09:19Z",
       "category": "fix",
-      "areas": [
-        "Desktop app",
-        "Desktop renderer"
-      ],
+      "areas": ["Desktop app", "Desktop renderer"],
       "changedFiles": [
         "apps/web/src/components/Sidebar.logic.test.ts",
         "apps/web/src/components/Sidebar.logic.ts",
@@ -1147,12 +1008,8 @@
       "summary": "",
       "authoredAt": "2026-03-28T16:13:52-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime"
-      ],
-      "changedFiles": [
-        "apps/server/src/provider/Layers/ClaudeAdapter.ts"
-      ],
+      "areas": ["Server runtime"],
+      "changedFiles": ["apps/server/src/provider/Layers/ClaudeAdapter.ts"],
       "changeSummary": "Upstream moves Claude stream-exit handling into the stream fiber itself so unexpected SDK termination always clears `context.streamFiber` and runs `handleStreamExit`, instead of depending on an observer callback to spawn cleanup afterward.",
       "forkValueSummary": "Sam's Code uses the same Claude adapter pattern and its orchestration layer depends on timely `turn.completed` and `session.exited` runtime events to clear running session state.",
       "recommendedDecision": "apply",
@@ -1166,11 +1023,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T17:03:01-07:00",
       "category": "feature",
-      "areas": [
-        "Contracts",
-        "Server runtime",
-        "Shared runtime"
-      ],
+      "areas": ["Contracts", "Server runtime", "Shared runtime"],
       "changedFiles": [
         "apps/server/integration/OrchestrationEngineHarness.integration.ts",
         "apps/server/src/git/Layers/ClaudeTextGeneration.test.ts",
@@ -1208,11 +1061,7 @@
       "summary": "Co-authored-by: Julius Marminge <julius0216@outlook.com>",
       "authoredAt": "2026-03-28T18:23:30-07:00",
       "category": "feature",
-      "areas": [
-        "Contracts",
-        "Desktop renderer",
-        "Server runtime"
-      ],
+      "areas": ["Contracts", "Desktop renderer", "Server runtime"],
       "changedFiles": [
         "apps/server/src/keybindings.test.ts",
         "apps/server/src/keybindings.ts",
@@ -1238,12 +1087,8 @@
       "summary": "",
       "authoredAt": "2026-03-29T01:28:52Z",
       "category": "feature",
-      "areas": [
-        "Release and CI"
-      ],
-      "changedFiles": [
-        ".github/VOUCHED.td"
-      ],
+      "areas": ["Release and CI"],
+      "changedFiles": [".github/VOUCHED.td"],
       "changeSummary": "Upstream appends a new GitHub username to `.github/VOUCHED.td`, expanding its maintainer vouch allowlist.",
       "forkValueSummary": "Sam's Code has release automation, but it does not use any `VOUCHED.td`-style maintainer trustlist; its release flow is driven by explicit GitHub Actions workflows and signing secrets instead.",
       "recommendedDecision": "ignore",
@@ -1257,9 +1102,7 @@
       "summary": "",
       "authoredAt": "2026-03-28T20:50:23-07:00",
       "category": "maintenance",
-      "areas": [
-        "Server runtime"
-      ],
+      "areas": ["Server runtime"],
       "changedFiles": [
         "apps/server/src/git/Layers/GitCore.test.ts",
         "apps/server/src/git/Layers/GitCore.ts",
@@ -1279,10 +1122,7 @@
       "summary": "Co-authored-by: Jono Kemball <jono-kemball@idexx.com>\nCo-authored-by: Ariaj Sarkar <rajsarkar02205@gmail.com>\nCo-authored-by: Julius Marminge <julius0216@outlook.com>\nCo-authored-by: codex <codex@users.noreply.github.com>",
       "authoredAt": "2026-03-29T04:23:10Z",
       "category": "maintenance",
-      "areas": [
-        "Contracts",
-        "Desktop app"
-      ],
+      "areas": ["Contracts", "Desktop app"],
       "changedFiles": [
         "apps/desktop/src/main.ts",
         "apps/desktop/src/preload.ts",

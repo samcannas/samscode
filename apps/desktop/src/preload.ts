@@ -12,15 +12,18 @@ const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const WINDOW_MINIMIZE_CHANNEL = "desktop:window-minimize";
 const WINDOW_MAXIMIZE_CHANNEL = "desktop:window-maximize";
 const WINDOW_CLOSE_CHANNEL = "desktop:window-close";
 const WINDOW_IS_MAXIMIZED_CHANNEL = "desktop:window-is-maximized";
 const WINDOW_MAXIMIZED_CHANGE_CHANNEL = "desktop:window-maximized-change";
-const wsUrl = process.env.SAMSCODE_DESKTOP_WS_URL ?? null;
 
 contextBridge.exposeInMainWorld("desktopBridge", {
-  getWsUrl: () => wsUrl,
+  getWsUrl: () => {
+    const result = ipcRenderer.sendSync(GET_WS_URL_CHANNEL);
+    return typeof result === "string" ? result : null;
+  },
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),
   setTheme: (theme) => ipcRenderer.invoke(SET_THEME_CHANNEL, theme),

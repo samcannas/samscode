@@ -145,7 +145,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                     />
                     {option.label}
                   </MenuSubTrigger>
-                  <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                  <MenuSubPopup sideOffset={4} className="[--available-height:min(24rem,70vh)]">
                     <MenuGroup>
                       <MenuRadioGroup
                         value={props.provider === option.value ? props.model : ""}

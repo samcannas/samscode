@@ -1,7 +1,7 @@
 "use client";
 
 import { Toast } from "@base-ui/react/toast";
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "@tanstack/react-router";
 import { ThreadId } from "@samscode/contracts";
 import {
@@ -142,6 +142,42 @@ function ThreadToastVisibleAutoDismiss({
   return null;
 }
 
+function CopyToastDescriptionButton({ description }: { description: string }) {
+  const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  return (
+    <button
+      type="button"
+      className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
+      onClick={() => {
+        if (!navigator.clipboard) return;
+        void navigator.clipboard.writeText(description).then(() => {
+          if (resetTimerRef.current !== null) {
+            window.clearTimeout(resetTimerRef.current);
+          }
+          setCopied(true);
+          resetTimerRef.current = window.setTimeout(() => {
+            setCopied(false);
+            resetTimerRef.current = null;
+          }, 1200);
+        });
+      }}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 function ToastProvider({ children, position = "top-right", ...props }: ToastProviderProps) {
   return (
     <Toast.Provider toastManager={toastManager} {...props}>
@@ -196,6 +232,10 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
             visibleIndex,
             visibleToastLayout.items.length,
           );
+          const copyableDescription =
+            toast.type === "error" && typeof toast.description === "string"
+              ? toast.description.trim()
+              : "";
 
           return (
             <Toast.Root
@@ -289,11 +329,14 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
                       data-slot="toast-title"
                     />
                     <Toast.Description
-                      className="min-w-0 break-words text-muted-foreground"
+                      className="min-w-0 break-words text-muted-foreground select-text"
                       data-slot="toast-description"
                     />
                   </div>
                 </div>
+                {copyableDescription.length > 0 ? (
+                  <CopyToastDescriptionButton description={copyableDescription} />
+                ) : null}
                 {toast.actionProps && (
                   <Toast.Action
                     className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
@@ -333,6 +376,10 @@ function AnchoredToasts() {
             const Icon = toast.type ? TOAST_ICONS[toast.type as keyof typeof TOAST_ICONS] : null;
             const tooltipStyle = toast.data?.tooltipStyle ?? false;
             const positionerProps = toast.positionerProps;
+            const copyableDescription =
+              toast.type === "error" && typeof toast.description === "string"
+                ? toast.description.trim()
+                : "";
 
             if (!positionerProps?.anchor) {
               return null;
@@ -378,11 +425,14 @@ function AnchoredToasts() {
                             data-slot="toast-title"
                           />
                           <Toast.Description
-                            className="min-w-0 break-words text-muted-foreground"
+                            className="min-w-0 break-words text-muted-foreground select-text"
                             data-slot="toast-description"
                           />
                         </div>
                       </div>
+                      {copyableDescription.length > 0 ? (
+                        <CopyToastDescriptionButton description={copyableDescription} />
+                      ) : null}
                       {toast.actionProps && (
                         <Toast.Action
                           className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
