@@ -34,7 +34,14 @@ import { GitManagerLive } from "./git/Layers/GitManager";
 import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitHubCliLive } from "./git/Layers/GitHubCli";
 import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
+import {
+  ClaudeTextGeneration,
+  CodexTextGeneration,
+  RoutingTextGenerationLive,
+} from "./git/Layers/RoutingTextGeneration";
+import { ClaudeTextGenerationLive } from "./git/Layers/ClaudeTextGeneration";
 import { GitServiceLive } from "./git/Layers/GitService";
+import { TextGeneration } from "./git/Services/TextGeneration";
 import { SpeechToTextLive } from "./speechToText/layer";
 import { UpstreamSyncLive } from "./upstreamSync/Layers/UpstreamSync";
 import { PtyAdapter } from "./terminal/Services/PTY";
@@ -98,7 +105,18 @@ export function makeServerProviderLayer(): Layer.Layer<
 
 export function makeServerRuntimeServicesLayer() {
   const gitCoreLayer = GitCoreLive.pipe(Layer.provideMerge(GitServiceLive));
-  const textGenerationLayer = CodexTextGenerationLive;
+  const textGenerationLayer = RoutingTextGenerationLive.pipe(
+    Layer.provideMerge(
+      Layer.effect(CodexTextGeneration, Effect.service(TextGeneration)).pipe(
+        Layer.provide(CodexTextGenerationLive),
+      ),
+    ),
+    Layer.provideMerge(
+      Layer.effect(ClaudeTextGeneration, Effect.service(TextGeneration)).pipe(
+        Layer.provide(ClaudeTextGenerationLive),
+      ),
+    ),
+  );
 
   const orchestrationLayer = OrchestrationEngineLive.pipe(
     Layer.provide(OrchestrationProjectionPipelineLive),

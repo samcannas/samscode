@@ -43,6 +43,7 @@ import type {
   ProjectWriteFileResult,
 } from "./project";
 import type { ServerConfig } from "./server";
+import type { ServerUpdateSettingsInput, ServerUpdateSettingsResult } from "./server";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -228,6 +229,7 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+    updateSettings: (input: ServerUpdateSettingsInput) => Promise<ServerUpdateSettingsResult>;
   };
   speechToText: {
     getState: () => Promise<SpeechToTextState>;

@@ -768,6 +768,21 @@ export default function Sidebar() {
     isThreadListExpanded: isActiveThreadListExpanded,
     previewLimit: THREAD_PREVIEW_LIMIT,
   });
+  const threadShortcutLabels = useMemo(() => {
+    const labels = new Map<ThreadId, string>();
+    for (let index = 0; index < visibleThreads.length && index < 9; index += 1) {
+      const thread = visibleThreads[index];
+      if (!thread) continue;
+      const label = shortcutLabelForCommand(
+        keybindings,
+        `thread.jump.${index + 1}` as (typeof keybindings)[number]["command"],
+      );
+      if (label) {
+        labels.set(thread.id, label);
+      }
+    }
+    return labels;
+  }, [keybindings, visibleThreads]);
 
   return (
     <>
@@ -863,6 +878,7 @@ export default function Sidebar() {
               const terminalStatus = terminalStatusFromRunningIds(
                 selectThreadTerminalState(terminalStateByThreadId, thread.id).runningTerminalIds,
               );
+              const threadShortcutLabel = threadShortcutLabels.get(thread.id) ?? null;
 
               return (
                 <SidebarMenuItem key={thread.id} data-thread-item>
@@ -975,6 +991,11 @@ export default function Sidebar() {
                       )}
                     </div>
                     <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      {threadShortcutLabel ? (
+                        <span className="text-[10px] text-muted-foreground/45">
+                          {threadShortcutLabel}
+                        </span>
+                      ) : null}
                       {terminalStatus && (
                         <span
                           role="img"

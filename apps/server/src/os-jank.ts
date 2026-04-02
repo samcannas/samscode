@@ -3,10 +3,10 @@ import { Effect, Path } from "effect";
 import { readPathFromLoginShell } from "@samscode/shared/shell";
 
 export function fixPath(): void {
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin" && process.platform !== "linux") return;
 
   try {
-    const shell = process.env.SHELL ?? "/bin/zsh";
+    const shell = process.env.SHELL ?? (process.platform === "linux" ? "/bin/bash" : "/bin/zsh");
     const result = readPathFromLoginShell(shell);
     if (result) {
       process.env.PATH = result;

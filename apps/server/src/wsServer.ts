@@ -62,6 +62,7 @@ import { Open, resolveAvailableEditors } from "./open";
 import { ServerConfig } from "./config";
 import { GitCore } from "./git/Services/GitCore.ts";
 import { UpstreamSync } from "./upstreamSync/Services/UpstreamSync";
+import { getServerSettings, updateServerSettings } from "./serverSettings";
 import { tryHandleProjectFaviconRequest } from "./projectFaviconRoute";
 import {
   ATTACHMENTS_ROUTE_PREFIX,
@@ -552,9 +553,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Stream.runForEach(keybindingsManager.streamChanges, (event) =>
-    pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
-      issues: event.issues,
-      providers: providerStatuses,
+    Effect.gen(function* () {
+      yield* pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
+        settings: yield* getServerSettings,
+        issues: event.issues,
+        providers: providerStatuses,
+      });
     }),
   ).pipe(Effect.forkIn(subscriptionsScope));
 
@@ -948,6 +952,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return {
           cwd,
           keybindingsConfigPath,
+          settings: yield* getServerSettings,
           keybindings: keybindingsConfig.keybindings,
           issues: keybindingsConfig.issues,
           providers: providerStatuses,
@@ -958,6 +963,17 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const body = stripRequestTag(request.body);
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
         return { keybindings: keybindingsConfig, issues: [] };
+      }
+
+      case WS_METHODS.serverUpdateSettings: {
+        const body = stripRequestTag(request.body);
+        const settings = yield* updateServerSettings(body);
+        yield* pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
+          settings,
+          issues: (yield* keybindingsManager.getSnapshot).issues,
+          providers: yield* providerHealth.getStatuses,
+        });
+        return { settings };
       }
 
       case WS_METHODS.speechToTextGetState:

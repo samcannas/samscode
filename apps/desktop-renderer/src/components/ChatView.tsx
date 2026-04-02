@@ -136,6 +136,7 @@ import {
 } from "../lib/terminalContext";
 import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { shouldUseCompactComposerFooter } from "./composerFooterLayout";
+import { sortThreadsForSidebar } from "./Sidebar.logic";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -512,6 +513,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = projects.find((p) => p.id === activeThread?.projectId);
+  const activeProjectThreads = useMemo(
+    () =>
+      activeProject
+        ? sortThreadsForSidebar(
+            threads.filter((thread) => thread.projectId === activeProject.id),
+            settings.sidebarThreadSortOrder,
+          )
+        : [],
+    [activeProject, settings.sidebarThreadSortOrder, threads],
+  );
 
   const openPullRequestDialog = useCallback(
     (reference?: string) => {
@@ -647,17 +658,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  const providerOptionsForDispatch = useMemo(() => {
-    if (!settings.codexBinaryPath && !settings.codexHomePath) {
-      return undefined;
-    }
-    return {
-      codex: {
-        ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-        ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-      },
-    };
-  }, [settings.codexBinaryPath, settings.codexHomePath]);
+  const providerOptionsForDispatch = undefined;
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings),
@@ -2266,6 +2267,47 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
 
+      if (
+        command === "thread.previous" ||
+        command === "thread.next" ||
+        command.startsWith("thread.jump.")
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        const projectThreadIds = activeProjectThreads.map((thread) => thread.id);
+        if (projectThreadIds.length === 0) {
+          return;
+        }
+        if (command === "thread.previous" || command === "thread.next") {
+          const currentIndex = projectThreadIds.findIndex(
+            (threadId) => threadId === activeThreadId,
+          );
+          if (currentIndex === -1) {
+            return;
+          }
+          const nextIndex =
+            command === "thread.previous"
+              ? Math.max(0, currentIndex - 1)
+              : Math.min(projectThreadIds.length - 1, currentIndex + 1);
+          const nextThreadId = projectThreadIds[nextIndex];
+          if (!nextThreadId || nextThreadId === activeThreadId) {
+            return;
+          }
+          void navigate({ to: "/$threadId", params: { threadId: nextThreadId } });
+          return;
+        }
+        const jumpIndex = Number.parseInt(command.slice("thread.jump.".length), 10) - 1;
+        if (!Number.isInteger(jumpIndex) || jumpIndex < 0) {
+          return;
+        }
+        const nextThreadId = projectThreadIds[jumpIndex];
+        if (!nextThreadId) {
+          return;
+        }
+        void navigate({ to: "/$threadId", params: { threadId: nextThreadId } });
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProject.scripts.find((entry) => entry.id === scriptId);
@@ -2290,6 +2332,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     onToggleDiff,
     onSpeechToTextShortcutKeyDown,
     toggleTerminalVisibility,
+    activeProjectThreads,
+    navigate,
   ]);
 
   useEffect(() => {

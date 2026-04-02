@@ -40,6 +40,7 @@ import {
   applyClaudePromptEffortPrefix,
   getEffectiveClaudeCodeEffort,
   getReasoningEffortOptions,
+  resolveClaudeApiModel,
   resolveReasoningEffortForProvider,
   supportsClaudeFastMode,
   supportsClaudeThinkingToggle,
@@ -2564,7 +2565,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
         const queryOptions: ClaudeQueryOptions = {
           ...(input.cwd ? { cwd: input.cwd } : {}),
-          ...(input.model ? { model: input.model } : {}),
+          ...(input.model
+            ? { model: resolveClaudeApiModel(input.model, input.modelOptions?.claudeAgent) }
+            : {}),
           pathToClaudeCodeExecutable: providerOptions?.binaryPath ?? "claude",
           settingSources: [...CLAUDE_SETTING_SOURCES],
           ...(effectiveEffort ? { effort: effectiveEffort } : {}),
@@ -2633,7 +2636,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           lastKnownContextWindow: undefined,
           lastAssistantUuid: resumeState?.resumeSessionAt,
           lastThreadStartedId: undefined,
-          activeModel: input.model,
+          activeModel: input.model
+            ? resolveClaudeApiModel(input.model, input.modelOptions?.claudeAgent)
+            : undefined,
           stopped: false,
         };
         yield* Ref.set(contextRef, context);
@@ -2685,17 +2690,22 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           providerRefs: {},
         });
 
-        const streamFiber = Effect.runFork(runSdkStream(context));
+        const streamFiber = Effect.runFork(
+          runSdkStream(context).pipe(
+            Effect.onExit((exit) =>
+              Effect.sync(() => {
+                if (context.streamFiber) {
+                  context.streamFiber = undefined;
+                }
+              }).pipe(
+                Effect.flatMap(() =>
+                  context.stopped ? Effect.void : handleStreamExit(context, exit),
+                ),
+              ),
+            ),
+          ),
+        );
         context.streamFiber = streamFiber;
-        streamFiber.addObserver((exit) => {
-          if (context.stopped) {
-            return;
-          }
-          if (context.streamFiber === streamFiber) {
-            context.streamFiber = undefined;
-          }
-          Effect.runFork(handleStreamExit(context, exit));
-        });
 
         return {
           ...session,
@@ -2712,12 +2722,16 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           yield* completeTurn(context, "completed");
         }
 
-        if (input.model && input.model !== context.activeModel) {
+        const nextEffectiveModel =
+          input.model !== undefined
+            ? resolveClaudeApiModel(input.model, input.modelOptions?.claudeAgent)
+            : undefined;
+        if (nextEffectiveModel && nextEffectiveModel !== context.activeModel) {
           yield* Effect.tryPromise({
-            try: () => context.query.setModel(input.model),
+            try: () => context.query.setModel(nextEffectiveModel),
             catch: (cause) => toRequestError(input.threadId, "turn/setModel", cause),
           });
-          context.activeModel = input.model;
+          context.activeModel = nextEffectiveModel;
         }
 
         // Apply interaction mode by switching the SDK's permission mode.

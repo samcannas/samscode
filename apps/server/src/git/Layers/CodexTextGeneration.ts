@@ -10,6 +10,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { runProcess } from "../../processRunner.ts";
 import { resolveCliBinary, shouldUseShellForBinary } from "../../provider/resolveCliBinary.ts";
+import { readServerSettingsWith } from "../../serverSettings.ts";
 import { TextGenerationError } from "../Errors.ts";
 import {
   type BranchNameGenerationInput,
@@ -192,7 +193,11 @@ const makeCodexTextGeneration = Effect.gen(function* () {
   const path = yield* Path.Path;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverConfig = yield* Effect.service(ServerConfig);
-
+  const readServerSettings = readServerSettingsWith({
+    fileSystem,
+    path,
+    stateDir: serverConfig.stateDir,
+  });
   type MaterializedImageAttachments = {
     readonly imagePaths: ReadonlyArray<string>;
   };
@@ -216,7 +221,10 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     });
 
   const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
-  const resolveCodexExecutablePath = (): string => resolveCliBinary("codex", getCodexEnv());
+  const resolveCodexExecutablePath = Effect.gen(function* () {
+    const settings = yield* readServerSettings;
+    return resolveCliBinary(settings.codexBinaryPath ?? "codex", getCodexEnv());
+  });
 
   const writeTempFile = (
     operation: string,
@@ -278,7 +286,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       return { imagePaths };
     });
 
-  const runCodexJson = <S extends Schema.Top>({
+  const runCodexJson = <S extends Schema.Top & { readonly DecodingServices: never }>({
     operation,
     cwd,
     prompt,
@@ -301,10 +309,14 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     cleanupPaths?: ReadonlyArray<string>;
     model?: string;
     modelOptions?: CodexModelOptions;
-  }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
+  }): Effect.Effect<S["Type"], TextGenerationError> =>
     Effect.gen(function* () {
-      const codexExecutablePath = resolveCodexExecutablePath();
-      const codexEnv = getCodexEnv();
+      const codexExecutablePath = yield* resolveCodexExecutablePath;
+      const settings = yield* readServerSettings;
+      const codexEnv = {
+        ...getCodexEnv(),
+        ...(settings.codexHomePath ? { CODEX_HOME: settings.codexHomePath } : {}),
+      };
       const schemaPath = yield* writeTempFile(
         operation,
         "codex-schema",
@@ -420,17 +432,15 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             }),
         });
 
-        return yield* Schema.decodeUnknownEffect(outputSchemaJson)(parsedOutput).pipe(
-          Effect.catchTag("SchemaError", (cause) =>
-            Effect.fail(
-              new TextGenerationError({
-                operation,
-                detail: `Codex returned invalid structured output. Preview: ${previewStructuredOutput(rawOutput)}`,
-                cause,
-              }),
-            ),
-          ),
-        );
+        return yield* Effect.try({
+          try: () => Schema.decodeUnknownSync(outputSchemaJson)(parsedOutput),
+          catch: (cause) =>
+            new TextGenerationError({
+              operation,
+              detail: `Codex returned invalid structured output. Preview: ${previewStructuredOutput(rawOutput)}`,
+              cause,
+            }),
+        });
       }).pipe(Effect.ensuring(cleanup));
     });
 
@@ -447,45 +457,51 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     model?: string;
     modelOptions?: CodexModelOptions;
   }): Effect.Effect<string, TextGenerationError> =>
-    Effect.tryPromise({
-      try: async () => {
-        const codexExecutablePath = resolveCodexExecutablePath();
-        const codexEnv = getCodexEnv();
-        const timeoutMs =
-          operation === "analyzeUpstreamSync" ? CODEX_UPSTREAM_SYNC_TIMEOUT_MS : CODEX_TIMEOUT_MS;
-        const result = await runProcess(
-          codexExecutablePath,
-          [
-            "exec",
-            "--json",
-            "--ephemeral",
-            "-s",
-            "read-only",
-            "--model",
-            model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
-            "--config",
-            `model_reasoning_effort="${resolveCodexReasoningEffort(modelOptions)}"`,
-            "-",
-          ],
-          {
-            cwd,
-            env: codexEnv,
-            stdin: prompt,
-            timeoutMs,
-            maxBufferBytes: 8 * 1024 * 1024,
-            outputMode: "truncate",
-          },
-        );
-        const lastText = extractCodexLastTextFromJsonLines(result.stdout);
-        if (!lastText || lastText.trim().length === 0) {
-          const previewSource = `${result.stdout}\n${result.stderr}`.trim();
-          throw new Error(
-            `Codex did not emit an agent message. Preview: ${previewStructuredOutput(previewSource)}`,
+    Effect.gen(function* () {
+      const codexExecutablePath = yield* resolveCodexExecutablePath;
+      const settings = yield* readServerSettings;
+      const codexEnv = {
+        ...getCodexEnv(),
+        ...(settings.codexHomePath ? { CODEX_HOME: settings.codexHomePath } : {}),
+      };
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const timeoutMs =
+            operation === "analyzeUpstreamSync" ? CODEX_UPSTREAM_SYNC_TIMEOUT_MS : CODEX_TIMEOUT_MS;
+          const result = await runProcess(
+            codexExecutablePath,
+            [
+              "exec",
+              "--json",
+              "--ephemeral",
+              "-s",
+              "read-only",
+              "--model",
+              model ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
+              "--config",
+              `model_reasoning_effort="${resolveCodexReasoningEffort(modelOptions)}"`,
+              "-",
+            ],
+            {
+              cwd,
+              env: codexEnv,
+              stdin: prompt,
+              timeoutMs,
+              maxBufferBytes: 8 * 1024 * 1024,
+              outputMode: "truncate",
+            },
           );
-        }
-        return lastText.trim();
-      },
-      catch: (cause) => normalizeCodexError(operation, cause, "Failed to run Codex CLI process"),
+          const lastText = extractCodexLastTextFromJsonLines(result.stdout);
+          if (!lastText || lastText.trim().length === 0) {
+            const previewSource = `${result.stdout}\n${result.stderr}`.trim();
+            throw new Error(
+              `Codex did not emit an agent message. Preview: ${previewStructuredOutput(previewSource)}`,
+            );
+          }
+          return lastText.trim();
+        },
+        catch: (cause) => normalizeCodexError(operation, cause, "Failed to run Codex CLI process"),
+      });
     });
 
   const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {
@@ -770,15 +786,16 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             }),
         }),
       ),
-      Effect.flatMap(Schema.decodeUnknownEffect(outputSchema)),
-      Effect.catchTag("SchemaError", (cause) =>
-        Effect.fail(
-          new TextGenerationError({
-            operation: "analyzeUpstreamSync",
-            detail: "Codex returned invalid structured output.",
-            cause,
-          }),
-        ),
+      Effect.flatMap((parsedOutput) =>
+        Effect.try({
+          try: () => Schema.decodeUnknownSync(outputSchema)(parsedOutput),
+          catch: (cause) =>
+            new TextGenerationError({
+              operation: "analyzeUpstreamSync",
+              detail: "Codex returned invalid structured output.",
+              cause,
+            }),
+        }),
       ),
       Effect.map(
         (result) =>
