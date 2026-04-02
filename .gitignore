@@ -16,6 +16,9 @@ release/
 !.samscode/upstream-sync/
 !.samscode/upstream-sync/**
 .samscode/upstream-sync/cache/
+.samscode/upstream-sync/debug.log
+$null
+stdout
 .idea/
 apps/web/.playwright
 apps/web/playwright-report
