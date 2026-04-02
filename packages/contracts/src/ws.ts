@@ -36,7 +36,7 @@ import {
 import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
-import { ServerConfigUpdatedPayload, ServerUpdateSettingsInput } from "./server";
+import { ServerConfigUpdatedPayload } from "./server";
 import { AgentCatalogListInput, AgentInstallInput, AgentUninstallInput } from "./agents";
 import {
   SkillCatalogListInput,
@@ -111,7 +111,6 @@ export const WS_METHODS = {
   // Server meta
   serverGetConfig: "server.getConfig",
   serverUpsertKeybinding: "server.upsertKeybinding",
-  serverUpdateSettings: "server.updateSettings",
   speechToTextGetState: "speechToText.getState",
   speechToTextDownloadModel: "speechToText.downloadModel",
   speechToTextDeleteModel: "speechToText.deleteModel",
@@ -201,7 +200,6 @@ const WebSocketRequestBody = Schema.Union([
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
-  tagRequestBody(WS_METHODS.serverUpdateSettings, ServerUpdateSettingsInput),
   tagRequestBody(WS_METHODS.speechToTextGetState, SpeechToTextGetStateInput),
   tagRequestBody(WS_METHODS.speechToTextDownloadModel, SpeechToTextDownloadModelInput),
   tagRequestBody(WS_METHODS.speechToTextDeleteModel, SpeechToTextDeleteModelInput),

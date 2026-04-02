@@ -1,5 +1,4 @@
 import {
-  CLAUDE_CONTEXT_WINDOW_OPTIONS,
   CLAUDE_CODE_EFFORT_OPTIONS,
   CODEX_REASONING_EFFORT_OPTIONS,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -8,7 +7,6 @@ import {
   MODEL_SLUG_ALIASES_BY_PROVIDER,
   REASONING_EFFORT_OPTIONS_BY_PROVIDER,
   type ClaudeModelOptions,
-  type ClaudeContextWindow,
   type ClaudeCodeEffort,
   type CodexModelOptions,
   type CodexReasoningEffort,
@@ -25,10 +23,6 @@ const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> =
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
 const CLAUDE_SONNET_4_6_MODEL = "claude-sonnet-4-6";
 const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
-const CLAUDE_CONTEXT_WINDOW_SUPPORTED_MODELS = new Set([
-  CLAUDE_OPUS_4_6_MODEL,
-  CLAUDE_SONNET_4_6_MODEL,
-]);
 
 export interface SelectableModelOption {
   slug: string;
@@ -62,40 +56,6 @@ export function supportsClaudeUltrathinkKeyword(model: string | null | undefined
 
 export function supportsClaudeThinkingToggle(model: string | null | undefined): boolean {
   return normalizeModelSlug(model, "claudeAgent") === CLAUDE_HAIKU_4_5_MODEL;
-}
-
-export function getClaudeContextWindowOptions(
-  model: string | null | undefined,
-): ReadonlyArray<ClaudeContextWindow> {
-  const normalized = normalizeModelSlug(model, "claudeAgent");
-  if (!normalized || !CLAUDE_CONTEXT_WINDOW_SUPPORTED_MODELS.has(normalized)) {
-    return [];
-  }
-  return CLAUDE_CONTEXT_WINDOW_OPTIONS;
-}
-
-export function resolveClaudeContextWindow(
-  model: string | null | undefined,
-  value: string | null | undefined,
-): ClaudeContextWindow | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  const options = getClaudeContextWindowOptions(model) as ReadonlyArray<string>;
-  return options.includes(trimmed) ? (trimmed as ClaudeContextWindow) : null;
-}
-
-export function resolveClaudeApiModel(
-  model: string | null | undefined,
-  modelOptions: ClaudeModelOptions | null | undefined,
-): ModelSlug {
-  const normalizedModel = resolveModelSlug(model, "claudeAgent");
-  const contextWindow = resolveClaudeContextWindow(normalizedModel, modelOptions?.contextWindow);
-  if (!contextWindow || contextWindow === "200k") {
-    return normalizedModel;
-  }
-  return `${normalizedModel}[${contextWindow}]` as ModelSlug;
 }
 
 export function isClaudeUltrathinkPrompt(text: string | null | undefined): boolean {
@@ -298,12 +258,10 @@ export function normalizeClaudeModelOptions(
     supportsClaudeThinkingToggle(model) && modelOptions?.thinking === false ? false : undefined;
   const fastMode =
     supportsClaudeFastMode(model) && modelOptions?.fastMode === true ? true : undefined;
-  const contextWindow = resolveClaudeContextWindow(model, modelOptions?.contextWindow) ?? undefined;
   const nextOptions: ClaudeModelOptions = {
     ...(thinking === false ? { thinking: false } : {}),
     ...(effort ? { effort } : {}),
     ...(fastMode ? { fastMode: true } : {}),
-    ...(contextWindow ? { contextWindow } : {}),
   };
   return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
 }
@@ -325,8 +283,4 @@ export function applyClaudePromptEffortPrefix(
   return `Ultrathink:\n${trimmed}`;
 }
 
-export {
-  CLAUDE_CONTEXT_WINDOW_OPTIONS,
-  CLAUDE_CODE_EFFORT_OPTIONS,
-  CODEX_REASONING_EFFORT_OPTIONS,
-};
+export { CLAUDE_CODE_EFFORT_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS };

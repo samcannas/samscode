@@ -90,7 +90,6 @@ const DESKTOP_UPDATE_CHANNEL = "latest";
 const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
 const BACKEND_READY_TIMEOUT_MS = 15_000;
 const BACKEND_READY_RETRY_DELAY_MS = 100;
-const MOCK_UPDATE_FEED_URL = process.env.SAMSCODE_DESKTOP_UPDATE_FEED_URL?.trim() || null;
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 
@@ -880,33 +879,23 @@ function configureAutoUpdater(): void {
   updaterConfigured = true;
   restorePersistedDesktopUpdateHint();
 
-  if (MOCK_UPDATE_FEED_URL) {
-    autoUpdater.setFeedURL({
-      provider: "generic",
-      url: MOCK_UPDATE_FEED_URL,
-      channel: DESKTOP_UPDATE_CHANNEL,
-    });
-    console.info(`[desktop-updater] Using mock update feed: ${MOCK_UPDATE_FEED_URL}`);
-  } else {
-    const githubToken =
-      process.env.SAMSCODE_DESKTOP_UPDATE_GITHUB_TOKEN?.trim() ||
-      process.env.GH_TOKEN?.trim() ||
-      "";
-    if (githubToken) {
-      // When a token is provided, re-configure the feed with `private: true` so
-      // electron-updater uses the GitHub API (api.github.com) instead of the
-      // public Atom feed (github.com/…/releases.atom) which rejects Bearer auth.
-      const appUpdateYml = readAppUpdateYml();
-      if (appUpdateYml?.provider === "github") {
-        autoUpdater.setFeedURL({
-          ...appUpdateYml,
-          provider: "github" as const,
-          private: true,
-          token: githubToken,
-        });
-      }
+  const githubToken =
+    process.env.SAMSCODE_DESKTOP_UPDATE_GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
+  if (githubToken) {
+    // When a token is provided, re-configure the feed with `private: true` so
+    // electron-updater uses the GitHub API (api.github.com) instead of the
+    // public Atom feed (github.com/…/releases.atom) which rejects Bearer auth.
+    const appUpdateYml = readAppUpdateYml();
+    if (appUpdateYml?.provider === "github") {
+      autoUpdater.setFeedURL({
+        ...appUpdateYml,
+        provider: "github" as const,
+        private: true,
+        token: githubToken,
+      });
     }
   }
+
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   // Keep alpha branding, but force all installs onto the stable update track.

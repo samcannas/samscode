@@ -9,7 +9,6 @@ import {
 import { useEffect, useRef } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Throttler } from "@tanstack/react-pacer";
-import { inferProviderForModel } from "@samscode/shared/model";
 
 import { APP_DISPLAY_NAME } from "../branding";
 import { Button } from "../components/ui/button";
@@ -28,7 +27,6 @@ import { projectQueryKeys } from "../lib/projectReactQuery";
 import { agentQueryKeys } from "../lib/agentReactQuery";
 import { skillQueryKeys } from "../lib/skillReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
-import { useAppSettings } from "../appSettings";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -57,7 +55,6 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <EventRouter />
-        <ServerSettingsSync />
         <DesktopUpdateNotifications />
         <DesktopProjectBootstrap />
         <Outlet />
@@ -332,33 +329,5 @@ function EventRouter() {
 
 function DesktopProjectBootstrap() {
   // Desktop hydration runs through EventRouter project + orchestration sync.
-  return null;
-}
-
-function ServerSettingsSync() {
-  const { settings } = useAppSettings();
-
-  useEffect(() => {
-    const api = readNativeApi();
-    if (!api) {
-      return;
-    }
-    void api.server.updateSettings({
-      codexBinaryPath: settings.codexBinaryPath.trim().length > 0 ? settings.codexBinaryPath : null,
-      codexHomePath: settings.codexHomePath.trim().length > 0 ? settings.codexHomePath : null,
-      claudeBinaryPath:
-        settings.claudeBinaryPath.trim().length > 0 ? settings.claudeBinaryPath : null,
-      textGenerationProvider: inferProviderForModel(settings.textGenerationModel ?? null),
-      ...(settings.textGenerationModel
-        ? { textGenerationModel: settings.textGenerationModel }
-        : {}),
-    });
-  }, [
-    settings.claudeBinaryPath,
-    settings.codexBinaryPath,
-    settings.codexHomePath,
-    settings.textGenerationModel,
-  ]);
-
   return null;
 }

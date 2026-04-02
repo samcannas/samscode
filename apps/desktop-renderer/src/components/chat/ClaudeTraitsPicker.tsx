@@ -6,11 +6,9 @@ import {
 } from "@samscode/contracts";
 import {
   applyClaudePromptEffortPrefix,
-  getClaudeContextWindowOptions,
   getDefaultReasoningEffort,
   getReasoningEffortOptions,
   normalizeClaudeModelOptions,
-  resolveClaudeContextWindow,
   resolveReasoningEffortForProvider,
   supportsClaudeFastMode,
   supportsClaudeThinkingToggle,
@@ -40,10 +38,6 @@ const CLAUDE_EFFORT_LABELS: Record<ClaudeCodeEffort, string> = {
   max: "Max",
   ultrathink: "Ultrathink",
 };
-const CLAUDE_CONTEXT_WINDOW_LABELS = {
-  "200k": "200K",
-  "1m": "1M",
-} as const;
 
 const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
@@ -65,8 +59,6 @@ function getSelectedClaudeTraits(
   ultrathinkPromptControlled: boolean;
   ultrathinkActive: boolean;
   supportsFastMode: boolean;
-  contextWindow: string | null;
-  contextWindowOptions: ReadonlyArray<string>;
 } {
   const options = getReasoningEffortOptions(PROVIDER, model);
   const defaultReasoningEffort = getDefaultReasoningEffort(PROVIDER) as Exclude<
@@ -86,8 +78,6 @@ function getSelectedClaudeTraits(
   const supportsFastMode = supportsClaudeFastMode(model);
   const ultrathinkActive =
     supportsClaudeUltrathinkKeyword(model) && isClaudeUltrathinkPrompt(prompt);
-  const contextWindowOptions = getClaudeContextWindowOptions(model);
-  const contextWindow = resolveClaudeContextWindow(model, modelOptions?.contextWindow);
   return {
     effort,
     thinkingEnabled,
@@ -98,8 +88,6 @@ function getSelectedClaudeTraits(
       isClaudeUltrathinkPrompt(stripInjectedUltrathinkPrefix(prompt)),
     ultrathinkActive,
     supportsFastMode,
-    contextWindow,
-    contextWindowOptions,
   };
 }
 
@@ -126,8 +114,6 @@ export const ClaudeTraitsMenuContent = memo(function ClaudeTraitsMenuContentImpl
     ultrathinkPromptControlled,
     ultrathinkActive,
     supportsFastMode,
-    contextWindow,
-    contextWindowOptions,
   } = getSelectedClaudeTraits(model, prompt, modelOptions);
   const defaultReasoningEffort = getDefaultReasoningEffort(PROVIDER);
 
@@ -241,38 +227,6 @@ export const ClaudeTraitsMenuContent = memo(function ClaudeTraitsMenuContentImpl
           </MenuGroup>
         </>
       ) : null}
-      {contextWindowOptions.length > 0 ? (
-        <>
-          <MenuDivider />
-          <MenuGroup>
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
-              Context Window
-            </div>
-            <MenuRadioGroup
-              value={contextWindow ?? "200k"}
-              onValueChange={(value) => {
-                setProviderModelOptions(
-                  threadId,
-                  PROVIDER,
-                  normalizeClaudeModelOptions(model, {
-                    ...modelOptions,
-                    contextWindow: value === "200k" ? undefined : value,
-                  }),
-                  { persistSticky: true },
-                );
-              }}
-            >
-              {contextWindowOptions.map((option) => (
-                <MenuRadioItem key={option} value={option}>
-                  {CLAUDE_CONTEXT_WINDOW_LABELS[
-                    option as keyof typeof CLAUDE_CONTEXT_WINDOW_LABELS
-                  ] ?? option}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuGroup>
-        </>
-      ) : null}
     </>
   );
 });
@@ -286,14 +240,8 @@ export const ClaudeTraitsPicker = memo(function ClaudeTraitsPicker({
   const draft = useComposerThreadDraft(threadId);
   const prompt = draft.prompt;
   const modelOptions = draft.modelOptions?.[PROVIDER];
-  const {
-    effort,
-    thinkingEnabled,
-    fastModeEnabled,
-    ultrathinkActive,
-    supportsFastMode,
-    contextWindow,
-  } = getSelectedClaudeTraits(model, prompt, modelOptions);
+  const { effort, thinkingEnabled, fastModeEnabled, ultrathinkActive, supportsFastMode } =
+    getSelectedClaudeTraits(model, prompt, modelOptions);
   const triggerLabel = [
     ultrathinkActive
       ? "Ultrathink"
@@ -303,13 +251,6 @@ export const ClaudeTraitsPicker = memo(function ClaudeTraitsPicker({
           ? null
           : `Thinking ${thinkingEnabled ? "On" : "Off"}`,
     ...(supportsFastMode && fastModeEnabled ? ["Fast"] : []),
-    ...(contextWindow && contextWindow !== "200k"
-      ? [
-          CLAUDE_CONTEXT_WINDOW_LABELS[
-            contextWindow as keyof typeof CLAUDE_CONTEXT_WINDOW_LABELS
-          ] ?? contextWindow,
-        ]
-      : []),
   ]
     .filter(Boolean)
     .join(" · ");

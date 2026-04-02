@@ -12,28 +12,15 @@ import {
   type ProviderSession,
   type TurnId,
 } from "@samscode/contracts";
-import {
-  Cache,
-  Cause,
-  Duration,
-  Effect,
-  FileSystem,
-  Layer,
-  Option,
-  Path,
-  Schema,
-  Stream,
-} from "effect";
+import { Cache, Cause, Duration, Effect, Layer, Option, Schema, Stream } from "effect";
 import { makeDrainableWorker } from "@samscode/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
-import { ServerConfig } from "../../config.ts";
 import { ContextOptimizationService } from "../../contextOptimization/Services/ContextOptimization.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { ProviderAdapterRequestError, ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
-import { readServerSettingsWith } from "../../serverSettings.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import {
   ProviderCommandReactor,
@@ -136,14 +123,6 @@ const make = Effect.gen(function* () {
   const git = yield* GitCore;
   const textGeneration = yield* TextGeneration;
   const contextOptimization = yield* ContextOptimizationService;
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const serverConfig = yield* Effect.service(ServerConfig);
-  const readServerSettings = readServerSettingsWith({
-    fileSystem,
-    path,
-    stateDir: serverConfig.stateDir,
-  });
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -255,25 +234,6 @@ const make = Effect.gen(function* () {
       thread,
       projects: readModel.projects,
     });
-    const runtimeSettings = yield* readServerSettings;
-    const mergedProviderOptions: ProviderStartOptions | undefined = (() => {
-      const codex = {
-        ...(runtimeSettings.codexBinaryPath ? { binaryPath: runtimeSettings.codexBinaryPath } : {}),
-        ...(runtimeSettings.codexHomePath ? { homePath: runtimeSettings.codexHomePath } : {}),
-        ...options?.providerOptions?.codex,
-      };
-      const claudeAgent = {
-        ...(runtimeSettings.claudeBinaryPath
-          ? { binaryPath: runtimeSettings.claudeBinaryPath }
-          : {}),
-        ...options?.providerOptions?.claudeAgent,
-      };
-      const nextOptions: ProviderStartOptions = {
-        ...(Object.keys(codex).length > 0 ? { codex } : {}),
-        ...(Object.keys(claudeAgent).length > 0 ? { claudeAgent } : {}),
-      };
-      return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
-    })();
 
     const resolveActiveSession = (threadId: ThreadId) =>
       providerService
@@ -292,7 +252,9 @@ const make = Effect.gen(function* () {
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
         ...(desiredModel ? { model: desiredModel } : {}),
         ...(options?.modelOptions !== undefined ? { modelOptions: options.modelOptions } : {}),
-        ...(mergedProviderOptions !== undefined ? { providerOptions: mergedProviderOptions } : {}),
+        ...(options?.providerOptions !== undefined
+          ? { providerOptions: options.providerOptions }
+          : {}),
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
       });
 
@@ -467,13 +429,12 @@ const make = Effect.gen(function* () {
     const oldBranch = input.branch;
     const cwd = input.worktreePath;
     const attachments = input.attachments ?? [];
-    const runtimeSettings = yield* readServerSettings;
     yield* textGeneration
       .generateBranchName({
         cwd,
         message: input.messageText,
         ...(attachments.length > 0 ? { attachments } : {}),
-        model: runtimeSettings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
+        model: DEFAULT_GIT_TEXT_GENERATION_MODEL,
       })
       .pipe(
         Effect.catch((error) =>

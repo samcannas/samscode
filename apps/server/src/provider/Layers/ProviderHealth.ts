@@ -22,10 +22,8 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "../codexCliVersion";
-import { ServerConfig } from "../../config";
 import { resolveCliBinary, shouldUseShellForBinary } from "../resolveCliBinary";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
-import { getServerSettings } from "../../serverSettings";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
@@ -247,10 +245,10 @@ const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.
     (acc, chunk) => acc + new TextDecoder().decode(chunk),
   );
 
-const runCodexCommand = (args: ReadonlyArray<string>, binaryPathOverride?: string | null) =>
+const runCodexCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const binaryPath = resolveCliBinary(binaryPathOverride ?? "codex");
+    const binaryPath = resolveCliBinary("codex");
     const command = ChildProcess.make(binaryPath, [...args], {
       shell: shouldUseShellForBinary(binaryPath),
     });
@@ -269,10 +267,10 @@ const runCodexCommand = (args: ReadonlyArray<string>, binaryPathOverride?: strin
     return { stdout, stderr, code: exitCode } satisfies CommandResult;
   }).pipe(Effect.scoped);
 
-const runClaudeCommand = (args: ReadonlyArray<string>, binaryPathOverride?: string | null) =>
+const runClaudeCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const binaryPath = resolveCliBinary(binaryPathOverride ?? "claude");
+    const binaryPath = resolveCliBinary("claude");
     const command = ChildProcess.make(binaryPath, [...args], {
       shell: shouldUseShellForBinary(binaryPath),
     });
@@ -296,13 +294,12 @@ const runClaudeCommand = (args: ReadonlyArray<string>, binaryPathOverride?: stri
 export const checkCodexProviderStatus: Effect.Effect<
   ServerProviderStatus,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path | ServerConfig
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
 > = Effect.gen(function* () {
   const checkedAt = new Date().toISOString();
-  const currentSettings = yield* getServerSettings;
 
   // Probe 1: `codex --version` — is the CLI reachable?
-  const versionProbe = yield* runCodexCommand(["--version"], currentSettings.codexBinaryPath).pipe(
+  const versionProbe = yield* runCodexCommand(["--version"]).pipe(
     Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
     Effect.result,
   );
@@ -376,10 +373,10 @@ export const checkCodexProviderStatus: Effect.Effect<
     } satisfies ServerProviderStatus;
   }
 
-  const authProbe = yield* runCodexCommand(
-    ["login", "status"],
-    currentSettings.codexBinaryPath,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  const authProbe = yield* runCodexCommand(["login", "status"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
 
   if (Result.isFailure(authProbe)) {
     const error = authProbe.failure;
@@ -505,16 +502,15 @@ export function parseClaudeAuthStatusFromOutput(result: CommandResult): {
 export const checkClaudeProviderStatus: Effect.Effect<
   ServerProviderStatus,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path | ServerConfig
+  ChildProcessSpawner.ChildProcessSpawner
 > = Effect.gen(function* () {
   const checkedAt = new Date().toISOString();
-  const currentSettings = yield* getServerSettings;
 
   // Probe 1: `claude --version` — is the CLI reachable?
-  const versionProbe = yield* runClaudeCommand(
-    ["--version"],
-    currentSettings.claudeBinaryPath,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  const versionProbe = yield* runClaudeCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
 
   if (Result.isFailure(versionProbe)) {
     const error = versionProbe.failure;
@@ -557,10 +553,10 @@ export const checkClaudeProviderStatus: Effect.Effect<
   }
 
   // Probe 2: `claude auth status` — is the user authenticated?
-  const authProbe = yield* runClaudeCommand(
-    ["auth", "status"],
-    currentSettings.claudeBinaryPath,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  const authProbe = yield* runClaudeCommand(["auth", "status"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
 
   if (Result.isFailure(authProbe)) {
     const error = authProbe.failure;

@@ -7,11 +7,10 @@ export function syncShellEnvironment(
     readEnvironment?: ShellEnvironmentReader;
   } = {},
 ): void {
-  const platform = options.platform ?? process.platform;
-  if (platform !== "darwin" && platform !== "linux") return;
+  if ((options.platform ?? process.platform) !== "darwin") return;
 
   try {
-    const shell = env.SHELL ?? (platform === "linux" ? "/bin/bash" : "/bin/zsh");
+    const shell = env.SHELL ?? "/bin/zsh";
     const shellEnvironment = (options.readEnvironment ?? readEnvironmentFromLoginShell)(shell, [
       "PATH",
       "SSH_AUTH_SOCK",

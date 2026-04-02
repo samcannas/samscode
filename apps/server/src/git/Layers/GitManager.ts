@@ -9,12 +9,10 @@ import {
 } from "@samscode/shared/git";
 
 import { GitManagerError } from "../Errors.ts";
-import { ServerConfig } from "../../config.ts";
 import { GitManager, type GitManagerShape } from "../Services/GitManager.ts";
 import { GitCore } from "../Services/GitCore.ts";
 import { GitHubCli } from "../Services/GitHubCli.ts";
 import { TextGeneration } from "../Services/TextGeneration.ts";
-import { readServerSettingsWith } from "../../serverSettings.ts";
 
 interface OpenPrInfo {
   number: number;
@@ -338,7 +336,6 @@ export const makeGitManager = Effect.gen(function* () {
   const gitCore = yield* GitCore;
   const gitHubCli = yield* GitHubCli;
   const textGeneration = yield* TextGeneration;
-  const serverConfig = yield* Effect.service(ServerConfig);
 
   const configurePullRequestHeadUpstream = (
     cwd: string,
@@ -437,11 +434,6 @@ export const makeGitManager = Effect.gen(function* () {
     );
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const readServerSettings = readServerSettingsWith({
-    fileSystem,
-    path,
-    stateDir: serverConfig.stateDir,
-  });
 
   const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
 
@@ -666,8 +658,6 @@ export const makeGitManager = Effect.gen(function* () {
           commitMessage: formatCommitMessage(customCommit.subject, customCommit.body),
         };
       }
-      const settings = yield* readServerSettings;
-      const textGenerationModel = input.model ?? settings.textGenerationModel;
 
       const generated = yield* textGeneration
         .generateCommitMessage({
@@ -676,7 +666,7 @@ export const makeGitManager = Effect.gen(function* () {
           stagedSummary: limitContext(context.stagedSummary, 8_000),
           stagedPatch: limitContext(context.stagedPatch, 50_000),
           ...(input.includeBranch ? { includeBranch: true } : {}),
-          ...(textGenerationModel ? { model: textGenerationModel } : {}),
+          ...(input.model ? { model: input.model } : {}),
         })
         .pipe(Effect.map((result) => sanitizeCommitMessage(result)));
 
@@ -754,8 +744,6 @@ export const makeGitManager = Effect.gen(function* () {
 
       const baseBranch = yield* resolveBaseBranch(cwd, branch, details.upstreamRef, headContext);
       const rangeContext = yield* gitCore.readRangeContext(cwd, baseBranch);
-      const settings = yield* readServerSettings;
-      const textGenerationModel = model ?? settings.textGenerationModel;
 
       const generated = yield* textGeneration.generatePrContent({
         cwd,
@@ -764,7 +752,7 @@ export const makeGitManager = Effect.gen(function* () {
         commitSummary: limitContext(rangeContext.commitSummary, 20_000),
         diffSummary: limitContext(rangeContext.diffSummary, 20_000),
         diffPatch: limitContext(rangeContext.diffPatch, 60_000),
-        ...(textGenerationModel ? { model: textGenerationModel } : {}),
+        ...(model ? { model } : {}),
       });
 
       const bodyFile = path.join(tempDir, `samscode-pr-body-${process.pid}-${randomUUID()}.md`);

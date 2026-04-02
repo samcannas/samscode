@@ -61,7 +61,6 @@ const withDefaults =
 export const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
-  claudeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   defaultThreadEnvMode: EnvMode.pipe(withDefaults(() => "local" as const satisfies EnvMode)),
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
   diffWordWrap: Schema.Boolean.pipe(withDefaults(() => false)),
