@@ -7,6 +7,7 @@ import { desktopDir, resolveElectronPath } from "./electron-launcher.mjs";
 
 const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5733);
 const devServerUrl = `http://localhost:${port}`;
+const serverDir = join(desktopDir, "../server");
 const requiredFiles = [
   "dist-electron/main.js",
   "dist-electron/preload.js",
@@ -20,16 +21,13 @@ const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
 const childTreeGracePeriodMs = 1_200;
 
-await waitOn({
-  resources: [`tcp:${port}`, ...requiredFiles.map((filePath) => `file:${filePath}`)],
-});
-
 const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
 let shuttingDown = false;
 let restartTimer = null;
 let currentApp = null;
+let serverBundleWatcher = null;
 let restartQueue = Promise.resolve();
 const expectedExits = new WeakSet();
 const watchers = [];
@@ -48,6 +46,73 @@ function cleanupStaleDevApps() {
   }
 
   spawnSync("pkill", ["-f", "--", `--samscode-dev-root=${desktopDir}`], { stdio: "ignore" });
+}
+
+function startServerBundleWatcher() {
+  if (serverBundleWatcher) {
+    return;
+  }
+
+  serverBundleWatcher = spawn("bun", ["x", "tsdown", "--watch"], {
+    cwd: serverDir,
+    env: childEnv,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+
+  serverBundleWatcher.once("exit", (code, signal) => {
+    const exitedWatcher = serverBundleWatcher;
+    serverBundleWatcher = null;
+
+    if (shuttingDown) {
+      return;
+    }
+
+    console.error(
+      `[desktop-dev] server bundle watcher exited unexpectedly (code=${code ?? "null"}, signal=${signal ?? "null"})`,
+    );
+
+    if (exitedWatcher) {
+      setTimeout(() => {
+        if (!shuttingDown && serverBundleWatcher === null) {
+          startServerBundleWatcher();
+        }
+      }, restartDebounceMs).unref();
+    }
+  });
+}
+
+async function stopServerBundleWatcher() {
+  const watcher = serverBundleWatcher;
+  if (!watcher) {
+    return;
+  }
+
+  serverBundleWatcher = null;
+
+  await new Promise((resolve) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+
+    watcher.once("exit", finish);
+    watcher.kill("SIGTERM");
+
+    setTimeout(() => {
+      if (settled) {
+        return;
+      }
+
+      watcher.kill("SIGKILL");
+      finish();
+    }, forcedShutdownTimeoutMs).unref();
+  });
 }
 
 function startApp() {
@@ -192,6 +257,7 @@ async function shutdown(exitCode) {
   }
 
   await stopApp();
+  await stopServerBundleWatcher();
   killChildTree("TERM");
   await new Promise((resolve) => {
     setTimeout(resolve, childTreeGracePeriodMs);
@@ -200,6 +266,11 @@ async function shutdown(exitCode) {
 
   process.exit(exitCode);
 }
+
+startServerBundleWatcher();
+await waitOn({
+  resources: [`tcp:${port}`, ...requiredFiles.map((filePath) => `file:${filePath}`)],
+});
 
 startWatchers();
 cleanupStaleDevApps();
