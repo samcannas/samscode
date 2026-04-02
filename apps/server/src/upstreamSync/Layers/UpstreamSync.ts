@@ -9,6 +9,7 @@ import {
   type ProviderStartOptions,
   ThreadId,
   UPSTREAM_SYNC_SCHEMA_VERSION,
+  type UpstreamSyncActiveCandidate,
   type UpstreamSyncAnalysisRun,
   type UpstreamSyncAreaPolicy,
   type UpstreamSyncAreaPolicyFile,
@@ -20,7 +21,10 @@ import {
   type UpstreamSyncReleaseCandidateIntake,
   type UpstreamSyncReleaseIntake,
   type UpstreamSyncReleaseReport,
+  type UpstreamSyncReviewPhase,
+  type UpstreamSyncReviewState,
   type UpstreamSyncReleaseTriage,
+  type UpstreamSyncStartNextReleaseReviewInput,
   type UpstreamSyncStatus,
   type UpstreamSyncStatusInput,
   UpstreamSyncAreaPolicyFile as UpstreamSyncAreaPolicyFileSchema,
@@ -28,7 +32,7 @@ import {
   UpstreamSyncReleaseIntake as UpstreamSyncReleaseIntakeSchema,
   UpstreamSyncReleaseTriage as UpstreamSyncReleaseTriageSchema,
 } from "@samscode/contracts";
-import { Effect, Fiber, Layer, Schema, Stream } from "effect";
+import { Effect, Fiber, Layer, PubSub, Schema, Stream } from "effect";
 
 import { runProcess } from "../../processRunner.ts";
 import { createLogger } from "../../logger.ts";
@@ -49,7 +53,7 @@ const MIRROR_FETCH_TIMEOUT_MS = 120_000;
 const GIT_SHOW_TIMEOUT_MS = 30_000;
 const TEXT_LIKE_FILE_PATTERN =
   /\.(?:ts|tsx|js|jsx|json|md|css|scss|html|yml|yaml|txt|mjs|cjs|toml)$/i;
-const UPSTREAM_ANALYSIS_CHUNK_SIZE = 1;
+const DEFAULT_UPSTREAM_ANALYSIS_CONCURRENCY = 4;
 const UPSTREAM_ANALYSIS_MAX_CHANGED_FILES = 8;
 const logger = createLogger("upstream-sync");
 
@@ -61,9 +65,63 @@ type MirrorCommit = {
   title: string;
   summary: string;
   changedFiles: string[];
+  patchText: string;
+  fileDiffs: Record<string, string>;
 };
 
-type UpstreamSyncAnalysisDecision = "apply" | "ignore" | "defer" | "already-present";
+type UpstreamSyncAnalysisDecision = "apply" | "ignore" | "already-present";
+
+type CandidateAnalysisContext = {
+  candidate: UpstreamSyncReleaseCandidateIntake;
+  commit: MirrorCommit;
+  autoDetectedAlreadyPresent: boolean;
+  localFileSnapshots: Array<{
+    path: string;
+    content: string;
+  }>;
+};
+
+type ReviewProgressCallbacks = {
+  onCandidateCount?: (count: number) => void;
+  onCandidateStarted?: (input: {
+    candidate: UpstreamSyncReleaseCandidateIntake;
+    index: number;
+    total: number;
+  }) => void;
+  onCandidateCompleted?: (input: {
+    candidate: UpstreamSyncReleaseCandidateIntake;
+    index: number;
+    total: number;
+    completedCount: number;
+  }) => void;
+  onProviderProgress?: (input: {
+    candidate: UpstreamSyncReleaseCandidateIntake;
+    index: number;
+    total: number;
+    message: string;
+  }) => void;
+};
+
+type BuildReleaseDataResult = {
+  intake: UpstreamSyncReleaseIntake;
+  triage: UpstreamSyncReleaseTriage;
+  metadata: UpstreamSyncForkMetadata;
+  report: UpstreamSyncReleaseReport;
+};
+
+type ActiveReviewJob = {
+  state: UpstreamSyncReviewState;
+  promise: Promise<void> | null;
+};
+
+type ActiveCandidateRuntimeState = UpstreamSyncActiveCandidate;
+
+const UPSTREAM_ANALYSIS_PROVIDER_STALL_WARNING_MS = 120_000;
+const UPSTREAM_ANALYSIS_PROVIDER_MAX_TIMEOUT_MS = 20 * 60_000;
+const UPSTREAM_ANALYSIS_REVIEW_MAX_TIMEOUT_MS = 2 * 60 * 60_000;
+const UPSTREAM_ANALYSIS_MAX_PATCH_CHARS = 16_000;
+const UPSTREAM_ANALYSIS_MAX_LOCAL_FILE_CHARS = 8_000;
+const UPSTREAM_ANALYSIS_MAX_LOCAL_FILES = 4;
 
 const decodeForkMetadata = Schema.decodeUnknownSync(UpstreamSyncForkMetadataSchema);
 const decodeAreaPolicyFile = Schema.decodeUnknownSync(UpstreamSyncAreaPolicyFileSchema);
@@ -80,6 +138,7 @@ function resolveSyncPaths(cwd: string) {
     releasesDir,
     cacheDir,
     mirrorDir,
+    debugLogPath: path.join(rootDir, "debug.log"),
     forkMetadataPath: path.join(rootDir, "fork.json"),
     areasPath: path.join(rootDir, "areas.json"),
     intakePath: (tag: string) => path.join(releasesDir, tag, "intake.json"),
@@ -89,6 +148,22 @@ function resolveSyncPaths(cwd: string) {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+async function appendUpstreamDebugLog(
+  cwd: string,
+  message: string,
+  context?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const paths = resolveSyncPaths(cwd);
+    await fs.mkdir(paths.rootDir, { recursive: true });
+    const contextSuffix =
+      context && Object.keys(context).length > 0 ? ` ${JSON.stringify(context)}` : "";
+    await fs.appendFile(paths.debugLogPath, `${nowIso()} ${message}${contextSuffix}\n`, "utf8");
+  } catch {
+    // Best-effort debug logging only.
+  }
 }
 
 function truncateText(input: string, maxLength = 180): string {
@@ -121,14 +196,6 @@ function extractStructuredJson(raw: string): string {
     return trimmed.slice(objectStart, objectEnd + 1);
   }
   return trimmed;
-}
-
-function chunkArray<T>(items: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
 }
 
 function toAnalysisCandidatePayload(candidate: UpstreamSyncReleaseCandidateIntake) {
@@ -261,9 +328,55 @@ async function readJsonFile<T>(filePath: string, decode: (input: unknown) => T):
   }
 }
 
+async function readJsonValue(filePath: string): Promise<unknown | null> {
+  return readJsonFile(filePath, (value) => value);
+}
+
 async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function readForkMetadata(paths: SyncPaths): Promise<UpstreamSyncForkMetadata | null> {
+  try {
+    const raw = await readJsonValue(paths.forkMetadataPath);
+    if (!raw) {
+      return null;
+    }
+    const migrated = {
+      ...(raw as Record<string, unknown>),
+      schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
+    };
+    const decoded = decodeForkMetadata(migrated);
+    if ((raw as { schemaVersion?: unknown }).schemaVersion !== UPSTREAM_SYNC_SCHEMA_VERSION) {
+      await writeJsonFile(paths.forkMetadataPath, decoded);
+    }
+    return decoded;
+  } catch {
+    await fs.rm(paths.forkMetadataPath, { force: true });
+    return null;
+  }
+}
+
+async function readAreaPolicies(paths: SyncPaths): Promise<UpstreamSyncAreaPolicyFile | null> {
+  try {
+    const raw = await readJsonValue(paths.areasPath);
+    if (!raw) {
+      return null;
+    }
+    const migrated = {
+      ...(raw as Record<string, unknown>),
+      schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
+    };
+    const decoded = decodeAreaPolicyFile(migrated);
+    if ((raw as { schemaVersion?: unknown }).schemaVersion !== UPSTREAM_SYNC_SCHEMA_VERSION) {
+      await writeJsonFile(paths.areasPath, decoded);
+    }
+    return decoded;
+  } catch {
+    await fs.rm(paths.areasPath, { force: true });
+    return null;
+  }
 }
 
 async function ensureSyncConfig(cwd: string): Promise<{
@@ -275,13 +388,13 @@ async function ensureSyncConfig(cwd: string): Promise<{
   await fs.mkdir(paths.releasesDir, { recursive: true });
   await fs.mkdir(paths.cacheDir, { recursive: true });
 
-  let forkMetadata = await readJsonFile(paths.forkMetadataPath, decodeForkMetadata);
+  let forkMetadata = await readForkMetadata(paths);
   if (!forkMetadata) {
     forkMetadata = buildDefaultForkMetadata();
     await writeJsonFile(paths.forkMetadataPath, forkMetadata);
   }
 
-  let areaPolicies = await readJsonFile(paths.areasPath, decodeAreaPolicyFile);
+  let areaPolicies = await readAreaPolicies(paths);
   if (!areaPolicies) {
     areaPolicies = buildDefaultAreaPolicyFile();
     await writeJsonFile(paths.areasPath, areaPolicies);
@@ -294,11 +407,14 @@ async function ensureSyncConfig(cwd: string): Promise<{
   };
 }
 
-async function runGit(args: string[], options?: { cwd?: string; allowNonZeroExit?: boolean }) {
+async function runGit(
+  args: string[],
+  options?: { cwd?: string; allowNonZeroExit?: boolean; timeoutMs?: number },
+) {
   return runProcess("git", args, {
     cwd: options?.cwd,
     allowNonZeroExit: options?.allowNonZeroExit,
-    timeoutMs: MIRROR_FETCH_TIMEOUT_MS,
+    timeoutMs: options?.timeoutMs ?? MIRROR_FETCH_TIMEOUT_MS,
     maxBufferBytes: 16 * 1024 * 1024,
   });
 }
@@ -446,13 +562,36 @@ async function readCommit(paths: SyncPaths, commitSha: string): Promise<MirrorCo
     .map((value) => value.trim())
     .filter((value) => value.length > 0)
     .toSorted((left, right) => left.localeCompare(right));
+  const patchResult = await runGit(
+    ["-C", paths.mirrorDir, "show", "--format=", "--unified=3", commitSha],
+    {
+      timeoutMs: GIT_SHOW_TIMEOUT_MS,
+    },
+  );
   const parsedMessage = parseCommitMessage(rawMessage);
+  const fileDiffs: Record<string, string> = {};
+  for (const changedFile of changedFiles
+    .filter((filePath) => TEXT_LIKE_FILE_PATTERN.test(filePath))
+    .slice(0, UPSTREAM_ANALYSIS_MAX_CHANGED_FILES)) {
+    const filePatch = await runGit(
+      ["-C", paths.mirrorDir, "show", "--format=", "--unified=3", commitSha, "--", changedFile],
+      {
+        allowNonZeroExit: true,
+        timeoutMs: GIT_SHOW_TIMEOUT_MS,
+      },
+    );
+    if (filePatch.code === 0 && filePatch.stdout.trim().length > 0) {
+      fileDiffs[changedFile] = limitSection(filePatch.stdout.trim(), 4_000);
+    }
+  }
   return {
     sha,
     date: safeIsoOrNull(committedAt),
     title: parsedMessage.title,
     summary: parsedMessage.summary,
     changedFiles,
+    patchText: limitSection(patchResult.stdout.trim(), UPSTREAM_ANALYSIS_MAX_PATCH_CHARS),
+    fileDiffs,
   };
 }
 
@@ -608,60 +747,206 @@ async function buildCandidates(input: {
   return candidates;
 }
 
-const UPSTREAM_ANALYSIS_PROVIDER_IDLE_TIMEOUT_MS = 25_000;
-const UPSTREAM_ANALYSIS_PROVIDER_MAX_TIMEOUT_MS = 180_000;
+async function readLocalFileSnapshot(
+  cwd: string,
+  filePath: string,
+): Promise<{ path: string; content: string } | null> {
+  const absolutePath = path.join(cwd, filePath);
+  try {
+    const content = await fs.readFile(absolutePath, "utf8");
+    return {
+      path: filePath,
+      content: limitSection(content, UPSTREAM_ANALYSIS_MAX_LOCAL_FILE_CHARS),
+    };
+  } catch {
+    return null;
+  }
+}
 
-function buildChunkAnalysisPrompt(input: {
+async function buildCandidateAnalysisContext(input: {
+  cwd: string;
+  paths: SyncPaths;
   releaseTag: string;
-  previousTag: string | null;
-  releaseNotes: string;
-  candidates: readonly UpstreamSyncReleaseCandidateIntake[];
-}): string {
-  return [
-    "You review upstream release changes for Sam's Code, a fork of T3 Code.",
-    "Use the current repository as source of truth and return ONLY JSON.",
-    "Stay in planning mode: do not run commands, do not edit files, and do not use tools unless absolutely necessary.",
-    "Return a JSON object with key `candidates`.",
-    "Each candidate must include: id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
-    "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
-    "- `apply` means the upstream intent should land in the fork, even if implementation differs.",
-    "- `already-present` means the fork already has the behavior and no sync work is needed.",
-    "- `ignore` means the change should not be pulled into the fork.",
-    "- `defer` means the change may matter later but should not be pulled now.",
-    "- `changeSummary` should explain in 1-2 short sentences what changed upstream.",
-    "- `forkValueSummary` should explain in 1-2 short sentences why this is or is not a good fit for Sam's Code.",
-    "- Do not include markdown fences or prose outside the JSON.",
-    "",
-    `Release tag: ${input.releaseTag}`,
-    ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
-    input.releaseNotes.trim().length > 0
-      ? ["", "Release notes:", limitSection(input.releaseNotes, 8_000)].join("\n")
-      : "",
-    "",
-    "Candidates:",
-    limitSection(JSON.stringify(input.candidates.map(toAnalysisCandidatePayload), null, 2), 8_000),
-  ]
-    .filter((section) => section.length > 0)
-    .join("\n");
+  candidate: UpstreamSyncReleaseCandidateIntake;
+  commit: MirrorCommit;
+}): Promise<CandidateAnalysisContext> {
+  const localFileSnapshots = (
+    await Promise.all(
+      input.candidate.changedFiles
+        .filter((filePath) => TEXT_LIKE_FILE_PATTERN.test(filePath))
+        .slice(0, UPSTREAM_ANALYSIS_MAX_LOCAL_FILES)
+        .map((filePath) => readLocalFileSnapshot(input.cwd, filePath)),
+    )
+  ).filter((value) => value !== null);
+
+  return {
+    candidate: input.candidate,
+    commit: input.commit,
+    autoDetectedAlreadyPresent: await autoDetectAlreadyPresent(
+      input.cwd,
+      input.paths,
+      input.releaseTag,
+      input.candidate.changedFiles,
+    ),
+    localFileSnapshots,
+  };
+}
+
+function buildIdleReviewState(cwd: string): UpstreamSyncReviewState {
+  const updatedAt = nowIso();
+  return {
+    cwd,
+    status: "idle",
+    phase: "idle",
+    releaseTag: null,
+    previousTag: null,
+    startedAt: null,
+    updatedAt,
+    completedAt: null,
+    candidateCount: null,
+    completedCandidateCount: 0,
+    maxConcurrency: null,
+    runningCandidateCount: 0,
+    queuedCandidateCount: null,
+    activeCandidates: [],
+    currentCandidateId: null,
+    currentCandidateTitle: null,
+    currentCandidateIndex: null,
+    lastProviderProgress: null,
+    message: null,
+    error: null,
+  };
+}
+
+function buildStartingReviewState(cwd: string, startedAt = nowIso()): UpstreamSyncReviewState {
+  return {
+    ...buildIdleReviewState(cwd),
+    status: "running",
+    phase: "fetching-upstream",
+    startedAt,
+    message: "Checking for the next upstream release.",
+  };
+}
+
+function updateReviewState(
+  current: UpstreamSyncReviewState,
+  patch: Partial<UpstreamSyncReviewState> & {
+    phase?: UpstreamSyncReviewPhase;
+  },
+): UpstreamSyncReviewState {
+  return {
+    ...current,
+    ...patch,
+    updatedAt: nowIso(),
+  };
+}
+
+function clampAnalysisConcurrency(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_UPSTREAM_ANALYSIS_CONCURRENCY;
+  }
+  return Math.min(8, Math.max(1, Math.trunc(value)));
+}
+
+function wrapCandidateAnalysisError(
+  candidate: UpstreamSyncReleaseCandidateIntake,
+  error: unknown,
+): Error {
+  const cause = error instanceof Error ? error.message : String(error);
+  return new Error(`Candidate ${candidate.id} ("${candidate.title}") failed: ${cause}`);
 }
 
 function buildSingleCandidateAnalysisPrompt(input: {
   releaseTag: string;
   previousTag: string | null;
-  candidate: UpstreamSyncReleaseCandidateIntake;
+  context: CandidateAnalysisContext;
 }): string {
+  const { candidate, commit, autoDetectedAlreadyPresent, localFileSnapshots } = input.context;
   return [
     "You review a single upstream T3 Code change for Sam's Code.",
-    "Stay in planning mode: do not run commands, do not edit files, and do not use tools unless absolutely necessary.",
+    "Inspect the upstream diff context first, then inspect corresponding local files when needed, and do not edit files.",
     "Return ONLY JSON with key `candidates` and exactly one object inside it.",
     "Fields: id, changeSummary, forkValueSummary, recommendedDecision, recommendedReason.",
-    "Allowed recommendedDecision values: apply, ignore, defer, already-present.",
+    "Allowed recommendedDecision values: apply, ignore, already-present.",
+    "The response must be valid JSON that parses with JSON.parse.",
+    "Use double-quoted JSON keys and double-quoted string values.",
+    "Do not use markdown fences, comments, trailing commas, ellipses, placeholders, or explanatory text before or after the JSON object.",
+    "Choose exactly one concrete side. `defer` is invalid.",
+    "If uncertain, inspect more local code until a concrete side is justified.",
+    "`recommendedReason` must cite concrete local evidence, specific fork architecture, or a precise mismatch with the upstream intent.",
+    "Generic rationale is invalid.",
+    "",
+    "Valid JSON example for an `apply` decision:",
+    JSON.stringify(
+      {
+        candidates: [
+          {
+            id: candidate.id,
+            changeSummary:
+              "Upstream refactors provider model selection so the provider-owned model catalog drives the chosen model.",
+            forkValueSummary:
+              "Sam's Code also selects provider-backed models and would benefit from the same consistency and reduced duplication.",
+            recommendedDecision: "apply" satisfies UpstreamSyncAnalysisDecision,
+            recommendedReason:
+              "The local renderer and server both maintain provider/model selection paths, so aligning selection logic with provider-owned metadata would reduce drift and keep behavior predictable.",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "",
+    "Valid JSON example for an `already-present` decision:",
+    JSON.stringify(
+      {
+        candidates: [
+          {
+            id: candidate.id,
+            changeSummary:
+              "Upstream adds reconnect backoff handling for transient websocket disconnects.",
+            forkValueSummary:
+              "The fork already preserves reconnect stability, so the upstream intent is already covered.",
+            recommendedDecision: "already-present" satisfies UpstreamSyncAnalysisDecision,
+            recommendedReason:
+              "Local websocket session handling already tracks reconnect state and applies bounded retry behavior, so this upstream change would duplicate existing fork logic.",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
     "",
     `Release tag: ${input.releaseTag}`,
     ...(input.previousTag ? [`Previous tag: ${input.previousTag}`] : []),
     "",
-    "Candidate:",
-    JSON.stringify(toAnalysisCandidatePayload(input.candidate), null, 2),
+    "Candidate metadata:",
+    JSON.stringify(toAnalysisCandidatePayload(candidate), null, 2),
+    "",
+    "Upstream commit:",
+    JSON.stringify(
+      {
+        sha: commit.sha,
+        title: commit.title,
+        body: commit.summary,
+        changedFiles: commit.changedFiles,
+        autoDetectedAlreadyPresentHint: autoDetectedAlreadyPresent,
+      },
+      null,
+      2,
+    ),
+    "",
+    "Upstream patch excerpt:",
+    commit.patchText || "[no patch excerpt available]",
+    "",
+    "Per-file diff excerpts:",
+    Object.keys(commit.fileDiffs).length > 0
+      ? JSON.stringify(commit.fileDiffs, null, 2)
+      : "[no text diff excerpts available]",
+    "",
+    "Local file snapshots:",
+    localFileSnapshots.length > 0
+      ? JSON.stringify(localFileSnapshots, null, 2)
+      : "[no corresponding local text files available]",
   ].join("\n");
 }
 
@@ -673,6 +958,7 @@ async function runProviderBackedAnalysis(input: {
   providerOptions?: ProviderStartOptions;
   prompt: string;
   label: string;
+  onProgress?: (message: string) => void;
 }): Promise<string> {
   const threadId = ThreadId.makeUnsafe(`upstream-sync:${randomUUID()}`);
   let assistantText = "";
@@ -684,34 +970,45 @@ async function runProviderBackedAnalysis(input: {
   let sawTurnCompleted = false;
   let sawRuntimeError = false;
   let nextAssistantLogThreshold = 1_000;
-  let idleTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastActivityAt = Date.now();
+  let stallWarnings = 0;
+  let stallWarningTimeout: ReturnType<typeof setTimeout> | null = null;
   let maxTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  const scheduleIdleTimeout = () => {
-    if (idleTimeout) {
-      clearTimeout(idleTimeout);
+  const diagnostics = () =>
+    [
+      `contentDeltaEvents=${contentDeltaEvents}`,
+      `taskProgressEvents=${taskProgressEvents}`,
+      `assistantChars=${assistantText.length}`,
+      `lastTaskProgress=${lastTaskProgress ? truncateText(lastTaskProgress, 180) : "none"}`,
+      `sawTurnCompleted=${sawTurnCompleted}`,
+      `sawRuntimeError=${sawRuntimeError}`,
+    ].join(", ");
+
+  const scheduleStallWarning = () => {
+    if (stallWarningTimeout) {
+      clearTimeout(stallWarningTimeout);
     }
-    idleTimeout = setTimeout(() => {
+    stallWarningTimeout = setTimeout(() => {
+      const stalledForMs = Date.now() - lastActivityAt;
+      stallWarnings += 1;
       logger.warn("upstream provider analysis idle timeout", {
         label: input.label,
         threadId,
         model: input.model,
         reasoningEffort: input.modelOptions?.reasoningEffort ?? null,
-        assistantChars: assistantText.length,
-        contentDeltaEvents,
-        taskProgressEvents,
-        lastTaskProgress: lastTaskProgress ? truncateText(lastTaskProgress, 180) : null,
-        hasTaskSummary: Boolean(taskSummary?.trim()),
-        sawTurnCompleted,
-        sawRuntimeError,
+        stalledForMs,
+        diagnostics: diagnostics(),
+        stallWarnings,
       });
-      fail(new Error("Provider-backed upstream analysis became idle before completing."));
-    }, UPSTREAM_ANALYSIS_PROVIDER_IDLE_TIMEOUT_MS);
-    idleTimeout.unref?.();
+      scheduleStallWarning();
+    }, UPSTREAM_ANALYSIS_PROVIDER_STALL_WARNING_MS);
+    stallWarningTimeout.unref?.();
   };
 
   const noteActivity = () => {
-    scheduleIdleTimeout();
+    lastActivityAt = Date.now();
+    scheduleStallWarning();
   };
 
   logger.info("upstream provider analysis session starting", {
@@ -769,6 +1066,7 @@ async function runProviderBackedAnalysis(input: {
             taskProgressEvents += 1;
             lastTaskProgress = event.payload.description;
             noteActivity();
+            input.onProgress?.(event.payload.description);
             logger.info("upstream provider analysis task progress", {
               label: input.label,
               threadId,
@@ -780,6 +1078,7 @@ async function runProviderBackedAnalysis(input: {
             if (event.payload.summary) {
               taskSummary = event.payload.summary;
               noteActivity();
+              input.onProgress?.(event.payload.summary);
               logger.info("upstream provider analysis task completed", {
                 label: input.label,
                 threadId,
@@ -795,15 +1094,23 @@ async function runProviderBackedAnalysis(input: {
               threadId,
               message: truncateText(event.payload.message, 180),
             });
-            fail(new Error(event.payload.message));
+            fail(
+              new Error(
+                `Provider-backed upstream analysis failed: ${event.payload.message} (${diagnostics()}).`,
+              ),
+            );
             return;
           }
           case "user-input.requested": {
-            fail(new Error("Upstream analysis unexpectedly requested interactive user input."));
+            fail(
+              new Error(
+                `Upstream analysis unexpectedly requested interactive user input (${diagnostics()}).`,
+              ),
+            );
             return;
           }
           case "turn.aborted": {
-            fail(new Error(event.payload.reason));
+            fail(new Error(`Provider turn aborted: ${event.payload.reason} (${diagnostics()}).`));
             return;
           }
           case "turn.completed": {
@@ -825,8 +1132,9 @@ async function runProviderBackedAnalysis(input: {
             }
             fail(
               new Error(
-                event.payload.errorMessage ??
-                  `Analysis turn completed without usable assistant output (state: ${event.payload.state}).`,
+                event.payload.errorMessage
+                  ? `Analysis turn failed: ${event.payload.errorMessage} (${diagnostics()}).`
+                  : `Analysis turn completed without usable assistant output (state: ${event.payload.state}; ${diagnostics()}).`,
               ),
             );
             return;
@@ -838,7 +1146,7 @@ async function runProviderBackedAnalysis(input: {
     ),
   );
 
-  scheduleIdleTimeout();
+  scheduleStallWarning();
   maxTimeout = setTimeout(() => {
     logger.warn("upstream provider analysis max timeout", {
       label: input.label,
@@ -853,7 +1161,11 @@ async function runProviderBackedAnalysis(input: {
       sawTurnCompleted,
       sawRuntimeError,
     });
-    fail(new Error("Provider-backed upstream analysis timed out."));
+    fail(
+      new Error(
+        `Provider-backed upstream analysis timed out after ${Math.round(UPSTREAM_ANALYSIS_PROVIDER_MAX_TIMEOUT_MS / 60_000)} minutes (${diagnostics()}).`,
+      ),
+    );
   }, UPSTREAM_ANALYSIS_PROVIDER_MAX_TIMEOUT_MS);
   maxTimeout.unref?.();
 
@@ -893,8 +1205,8 @@ async function runProviderBackedAnalysis(input: {
   try {
     return await resultPromise;
   } finally {
-    if (idleTimeout) {
-      clearTimeout(idleTimeout);
+    if (stallWarningTimeout) {
+      clearTimeout(stallWarningTimeout);
     }
     if (maxTimeout) {
       clearTimeout(maxTimeout);
@@ -906,14 +1218,18 @@ async function runProviderBackedAnalysis(input: {
 
 async function enrichCandidatesWithModelAnalysis(input: {
   cwd: string;
+  paths: SyncPaths;
   releaseTag: string;
   previousTag: string | null;
   releaseNotes: string;
   candidates: readonly UpstreamSyncReleaseCandidateIntake[];
+  commits: readonly MirrorCommit[];
   model: string;
   modelOptions?: CodexModelOptions;
   providerOptions?: ProviderStartOptions;
+  analysisConcurrency: number;
   providerService: typeof ProviderService.Service;
+  progress?: ReviewProgressCallbacks;
 }): Promise<{
   candidates: UpstreamSyncReleaseCandidateIntake[];
   analysis: UpstreamSyncAnalysisRun;
@@ -924,136 +1240,147 @@ async function enrichCandidatesWithModelAnalysis(input: {
         id: Schema.String,
         changeSummary: Schema.String,
         forkValueSummary: Schema.String,
-        recommendedDecision: Schema.Literals(["apply", "ignore", "defer", "already-present"]),
+        recommendedDecision: Schema.Literals(["apply", "ignore", "already-present"]),
         recommendedReason: Schema.String,
       }),
     ),
   });
   const decodeOutput = Schema.decodeUnknownSync(outputSchema);
   const startedAt = new Date();
-  const candidateChunks = chunkArray(input.candidates, UPSTREAM_ANALYSIS_CHUNK_SIZE);
+  const commitBySha = new Map(input.commits.map((commit) => [commit.sha, commit] as const));
   const analyzedById = new Map<string, (typeof input.candidates)[number]>();
-  const notes: string[] = [
-    `Processed ${input.candidates.length} candidate changes in ${candidateChunks.length} model request(s).`,
-  ];
+  const workItems = input.candidates.map((candidate, index) => {
+    const commit = commitBySha.get(candidate.commitSha);
+    if (!commit) {
+      throw new Error(`Missing upstream commit context for ${candidate.id}.`);
+    }
+    return {
+      candidate,
+      commit,
+      index,
+      total: input.candidates.length,
+    };
+  });
+  const notes: string[] = [`Processed ${input.candidates.length} candidate changes.`];
   logger.info("starting upstream analysis", {
     releaseTag: input.releaseTag,
     model: input.model,
     reasoningEffort: input.modelOptions?.reasoningEffort ?? null,
     candidateCount: input.candidates.length,
-    chunkCount: candidateChunks.length,
+    concurrency: input.analysisConcurrency,
   });
-  let failedChunkCount = 0;
-  let heuristicCandidateCount = 0;
-  for (const [chunkIndex, chunk] of candidateChunks.entries()) {
-    const chunkLabel =
-      chunk.length === 1
-        ? `candidate ${chunk[0]!.id}`
-        : `chunk ${chunkIndex + 1}/${candidateChunks.length}`;
-    const chunkPrompt =
-      chunk.length === 1
-        ? buildSingleCandidateAnalysisPrompt({
-            releaseTag: input.releaseTag,
-            previousTag: input.previousTag,
-            candidate: chunk[0]!,
-          })
-        : buildChunkAnalysisPrompt({
-            releaseTag: input.releaseTag,
-            previousTag: input.previousTag,
-            releaseNotes: input.releaseNotes,
-            candidates: chunk,
-          });
-    try {
-      const rawOutput = await runProviderBackedAnalysis({
-        providerService: input.providerService,
-        cwd: input.cwd,
-        model: input.model,
-        ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
-        ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
-        prompt: chunkPrompt,
-        label: chunkLabel,
+  input.progress?.onCandidateCount?.(input.candidates.length);
+  const onProviderProgress = input.progress?.onProviderProgress;
+  let nextIndex = 0;
+  let abortRequested = false;
+  let failure: Error | null = null;
+  let completedCandidateCount = 0;
+
+  const worker = async () => {
+    while (!abortRequested) {
+      const workItem = workItems[nextIndex];
+      if (!workItem) {
+        return;
+      }
+      nextIndex += 1;
+      input.progress?.onCandidateStarted?.({
+        candidate: workItem.candidate,
+        index: workItem.index,
+        total: workItem.total,
       });
-      const analysis = decodeOutput(JSON.parse(extractStructuredJson(rawOutput)));
-      for (const candidate of chunk) {
-        const analyzed = analysis.candidates.find((entry) => entry.id === candidate.id);
-        if (!analyzed) {
-          analyzedById.set(candidate.id, candidate);
-          continue;
+      try {
+        const analysisContext = await buildCandidateAnalysisContext({
+          cwd: input.cwd,
+          paths: input.paths,
+          releaseTag: input.releaseTag,
+          candidate: workItem.candidate,
+          commit: workItem.commit,
+        });
+        if (abortRequested) {
+          return;
         }
-        analyzedById.set(candidate.id, {
-          ...candidate,
+        const rawOutput = await runProviderBackedAnalysis({
+          providerService: input.providerService,
+          cwd: input.cwd,
+          model: input.model,
+          ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
+          ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+          prompt: buildSingleCandidateAnalysisPrompt({
+            releaseTag: input.releaseTag,
+            previousTag: input.previousTag,
+            context: analysisContext,
+          }),
+          label: `candidate ${workItem.candidate.id}`,
+          ...(onProviderProgress
+            ? {
+                onProgress: (message) => {
+                  if (abortRequested) {
+                    return;
+                  }
+                  onProviderProgress({
+                    candidate: workItem.candidate,
+                    index: workItem.index,
+                    total: workItem.total,
+                    message,
+                  });
+                },
+              }
+            : {}),
+        });
+        if (abortRequested) {
+          return;
+        }
+        const analysis = decodeOutput(JSON.parse(extractStructuredJson(rawOutput)));
+        const analyzed = analysis.candidates.find((entry) => entry.id === workItem.candidate.id);
+        if (!analyzed) {
+          throw new Error(
+            `Model analysis did not return a result for candidate ${workItem.candidate.id}.`,
+          );
+        }
+        if (analyzed.recommendedReason.trim().length === 0) {
+          throw new Error(
+            `Model analysis returned an empty rationale for candidate ${workItem.candidate.id}.`,
+          );
+        }
+        analyzedById.set(workItem.candidate.id, {
+          ...workItem.candidate,
           changeSummary: analyzed.changeSummary,
           forkValueSummary: analyzed.forkValueSummary,
           recommendedDecision: analyzed.recommendedDecision,
-          recommendedReason: analyzed.recommendedReason,
+          recommendedReason: analyzed.recommendedReason.trim(),
         });
-      }
-    } catch (error) {
-      failedChunkCount += 1;
-      notes.push(
-        `Chunk ${chunkIndex + 1}/${candidateChunks.length} fell back to heuristics: ${truncateText(error instanceof Error ? error.message : String(error), 220)}`,
-      );
-      logger.warn("upstream analysis chunk fell back to heuristics", {
-        releaseTag: input.releaseTag,
-        model: input.model,
-        reasoningEffort: input.modelOptions?.reasoningEffort ?? null,
-        chunkIndex: chunkIndex + 1,
-        chunkSize: chunk.length,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      if (chunk.length === 1) {
-        const candidate = chunk[0]!;
-        analyzedById.set(candidate.id, candidate);
-        heuristicCandidateCount += 1;
-        continue;
-      }
-
-      for (const candidate of chunk) {
-        try {
-          const rawRetry = await runProviderBackedAnalysis({
-            providerService: input.providerService,
-            cwd: input.cwd,
-            model: input.model,
-            ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
-            ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
-            prompt: buildSingleCandidateAnalysisPrompt({
-              releaseTag: input.releaseTag,
-              previousTag: input.previousTag,
-              candidate,
-            }),
-            label: `candidate ${candidate.id}`,
-          });
-          const retry = decodeOutput(JSON.parse(extractStructuredJson(rawRetry)));
-          const analyzed = retry.candidates[0];
-          if (!analyzed) {
-            analyzedById.set(candidate.id, candidate);
-            continue;
-          }
-          analyzedById.set(candidate.id, {
-            ...candidate,
-            changeSummary: analyzed.changeSummary,
-            forkValueSummary: analyzed.forkValueSummary,
-            recommendedDecision: analyzed.recommendedDecision,
-            recommendedReason: analyzed.recommendedReason,
-          });
-          notes.push(`Recovered ${candidate.id} with a single-candidate retry.`);
-        } catch (retryError) {
-          analyzedById.set(candidate.id, candidate);
-          heuristicCandidateCount += 1;
-          notes.push(
-            `Single-candidate retry for ${candidate.id} also fell back: ${truncateText(retryError instanceof Error ? retryError.message : String(retryError), 180)}`,
-          );
-          logger.warn("upstream single-candidate retry fell back to heuristics", {
-            releaseTag: input.releaseTag,
-            model: input.model,
-            reasoningEffort: input.modelOptions?.reasoningEffort ?? null,
-            candidateId: candidate.id,
-            error: retryError instanceof Error ? retryError.message : String(retryError),
-          });
+        completedCandidateCount += 1;
+        input.progress?.onCandidateCompleted?.({
+          candidate: workItem.candidate,
+          index: workItem.index,
+          total: workItem.total,
+          completedCount: completedCandidateCount,
+        });
+      } catch (error) {
+        const wrapped = wrapCandidateAnalysisError(workItem.candidate, error);
+        if (!failure) {
+          abortRequested = true;
+          failure = wrapped;
         }
+        throw wrapped;
       }
     }
+  };
+
+  const workerCount = Math.min(input.analysisConcurrency, Math.max(workItems.length, 1));
+  const workerResults = await Promise.allSettled(
+    Array.from({ length: workerCount }, () => worker()),
+  );
+  const rejectedWorker = workerResults.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failure) {
+    throw failure;
+  }
+  if (rejectedWorker) {
+    throw rejectedWorker.reason instanceof Error
+      ? rejectedWorker.reason
+      : new Error(String(rejectedWorker.reason));
   }
   const completedAt = new Date();
   logger.info("completed upstream analysis", {
@@ -1061,36 +1388,22 @@ async function enrichCandidatesWithModelAnalysis(input: {
     model: input.model,
     reasoningEffort: input.modelOptions?.reasoningEffort ?? null,
     candidateCount: input.candidates.length,
-    failedChunkCount,
-    heuristicCandidateCount,
+    concurrency: input.analysisConcurrency,
     durationMs: completedAt.getTime() - startedAt.getTime(),
   });
-  const modeledCandidateCount = input.candidates.length - heuristicCandidateCount;
-  if (failedChunkCount === 0) {
-    notes.push("All chunks completed with model-assisted analysis.");
-  } else if (modeledCandidateCount > 0) {
-    notes.push(
-      `Model analysis covered ${modeledCandidateCount}/${input.candidates.length} candidates; ${heuristicCandidateCount} remained heuristic.`,
-    );
-  } else {
-    notes.push("All candidates fell back to heuristics.");
-  }
+  const modeledCandidateCount = input.candidates.length;
+  notes.push("All candidates completed with model-backed analysis.");
   return {
     candidates: input.candidates.map((candidate) => analyzedById.get(candidate.id) ?? candidate),
     analysis: {
-      source:
-        heuristicCandidateCount === 0
-          ? "model"
-          : modeledCandidateCount > 0
-            ? "partial-model"
-            : "heuristic-fallback",
+      source: "model",
       model: input.model,
       ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
       startedAt: startedAt.toISOString(),
       completedAt: completedAt.toISOString(),
       durationMs: completedAt.getTime() - startedAt.getTime(),
       modeledCandidateCount,
-      heuristicCandidateCount,
+      heuristicCandidateCount: 0,
       notes,
     },
   };
@@ -1101,7 +1414,26 @@ async function readReleaseIntake(
   tag: string,
 ): Promise<UpstreamSyncReleaseIntake | null> {
   try {
-    return await readJsonFile(paths.intakePath(tag), decodeReleaseIntake);
+    const raw = await readJsonFile(paths.intakePath(tag), (value) => value);
+    if (!raw) {
+      return null;
+    }
+    const candidateHasDefer =
+      Array.isArray((raw as { candidates?: unknown }).candidates) &&
+      (raw as { candidates: Array<{ recommendedDecision?: unknown }> }).candidates.some(
+        (candidate) => candidate.recommendedDecision === "defer",
+      );
+    const analysisSource = (raw as { analysis?: { source?: unknown } }).analysis?.source;
+    const schemaVersion = (raw as { schemaVersion?: unknown }).schemaVersion;
+    if (
+      schemaVersion !== UPSTREAM_SYNC_SCHEMA_VERSION ||
+      analysisSource !== "model" ||
+      candidateHasDefer
+    ) {
+      await fs.rm(paths.intakePath(tag), { force: true });
+      return null;
+    }
+    return decodeReleaseIntake(raw);
   } catch {
     await fs.rm(paths.intakePath(tag), { force: true });
     return null;
@@ -1113,7 +1445,41 @@ async function readReleaseTriage(
   tag: string,
 ): Promise<UpstreamSyncReleaseTriage | null> {
   try {
-    return await readJsonFile(paths.triagePath(tag), decodeReleaseTriage);
+    const raw = await readJsonFile(paths.triagePath(tag), (value) => value);
+    if (!raw) {
+      return null;
+    }
+    let didMigrate = false;
+    const decisions = Array.isArray((raw as { decisions?: unknown }).decisions)
+      ? (
+          raw as {
+            decisions: Array<{ candidateId: string; decision: string; note?: string | null }>;
+          }
+        ).decisions.map((decision) => {
+          if (decision.decision !== "defer") {
+            return decision;
+          }
+          didMigrate = true;
+          return {
+            candidateId: decision.candidateId,
+            decision: "pending",
+            note: decision.note ?? null,
+          };
+        })
+      : [];
+    const migrated = {
+      ...(raw as Record<string, unknown>),
+      schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
+      decisions,
+    };
+    const decoded = decodeReleaseTriage(migrated);
+    if (
+      didMigrate ||
+      (raw as { schemaVersion?: unknown }).schemaVersion !== UPSTREAM_SYNC_SCHEMA_VERSION
+    ) {
+      await writeReleaseTriage(paths, decoded);
+    }
+    return decoded;
   } catch {
     await fs.rm(paths.triagePath(tag), { force: true });
     return null;
@@ -1185,20 +1551,52 @@ async function loadReleaseReportFromDisk(
   return mergeReleaseReport(intake, triage);
 }
 
-async function resolveReleaseData(input: {
+async function buildReleaseData(input: {
   cwd: string;
   tag: string;
   forceRefresh?: boolean;
   analysisModel?: string;
+  analysisConcurrency?: number;
   analysisModelOptions?: CodexModelOptions;
   analysisProviderOptions?: ProviderStartOptions;
   providerService: typeof ProviderService.Service;
-}): Promise<UpstreamSyncReleaseReport> {
+  progress?: ReviewProgressCallbacks;
+}): Promise<BuildReleaseDataResult> {
   const ensured = await ensureSyncConfig(input.cwd);
   if (!input.forceRefresh) {
     const cached = await loadReleaseReportFromDisk(ensured.paths, input.tag);
     if (cached) {
-      return cached;
+      return {
+        intake: {
+          schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
+          tag: cached.tag,
+          name: cached.name,
+          url: cached.url,
+          publishedAt: cached.publishedAt,
+          previousTag: cached.previousTag,
+          compareUrl: cached.compareUrl,
+          fetchedAt: cached.fetchedAt,
+          releaseNotes: cached.releaseNotes,
+          analysis: cached.analysis,
+          candidates: cached.candidates.map(
+            ({ decision: _decision, note: _note, ...candidate }) => candidate,
+          ),
+        },
+        triage: {
+          schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
+          tag: cached.tag,
+          updatedAt: cached.triagedAt ?? nowIso(),
+          decisions: cached.candidates
+            .filter((candidate) => candidate.decision !== "pending")
+            .map((candidate) => ({
+              candidateId: candidate.id,
+              decision: candidate.decision,
+              note: candidate.note,
+            })),
+        },
+        metadata: ensured.forkMetadata,
+        report: cached,
+      };
     }
   }
 
@@ -1219,7 +1617,7 @@ async function resolveReleaseData(input: {
   const commits = await Promise.all(
     commitShas.map((commitSha) => readCommit(ensured.paths, commitSha)),
   );
-  let candidates = await buildCandidates({
+  const candidates = await buildCandidates({
     cwd: input.cwd,
     paths: ensured.paths,
     repo: ensured.forkMetadata.upstream.repo,
@@ -1227,56 +1625,23 @@ async function resolveReleaseData(input: {
     commits,
     areaPolicies: ensured.areaPolicies.areas,
   });
-  const analysisStartedAt = new Date();
-  let analysis: UpstreamSyncAnalysisRun = {
-    source: "heuristic-fallback",
-    model: input.analysisModel?.trim() || DEFAULT_MODEL_BY_PROVIDER.codex,
-    ...(input.analysisModelOptions ? { modelOptions: input.analysisModelOptions } : {}),
-    startedAt: analysisStartedAt.toISOString(),
-    completedAt: analysisStartedAt.toISOString(),
-    durationMs: 0,
-    modeledCandidateCount: 0,
-    heuristicCandidateCount: candidates.length,
-    notes: ["Using heuristic release review until model-assisted analysis completes successfully."],
-  };
-
   const analysisModel = input.analysisModel?.trim() || DEFAULT_MODEL_BY_PROVIDER.codex;
-  try {
-    const enriched = await enrichCandidatesWithModelAnalysis({
-      cwd: input.cwd,
-      releaseTag: input.tag,
-      previousTag,
-      releaseNotes: "",
-      candidates,
-      model: analysisModel,
-      ...(input.analysisModelOptions ? { modelOptions: input.analysisModelOptions } : {}),
-      ...(input.analysisProviderOptions ? { providerOptions: input.analysisProviderOptions } : {}),
-      providerService: input.providerService,
-    });
-    candidates = enriched.candidates;
-    analysis = enriched.analysis;
-  } catch (error) {
-    const completedAt = new Date();
-    analysis = {
-      ...analysis,
-      completedAt: completedAt.toISOString(),
-      durationMs: completedAt.getTime() - analysisStartedAt.getTime(),
-      modeledCandidateCount: 0,
-      heuristicCandidateCount: candidates.length,
-      notes: [
-        "Model-assisted review failed, so heuristic recommendations are shown instead.",
-        error instanceof Error
-          ? truncateText(error.message, 220)
-          : "Unknown model analysis failure.",
-      ],
-    };
-    logger.warn("upstream analysis fell back to heuristics", {
-      releaseTag: input.tag,
-      model: analysisModel,
-      reasoningEffort: input.analysisModelOptions?.reasoningEffort ?? null,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const analysisConcurrency = clampAnalysisConcurrency(input.analysisConcurrency);
+  const enriched = await enrichCandidatesWithModelAnalysis({
+    cwd: input.cwd,
+    paths: ensured.paths,
+    releaseTag: input.tag,
+    previousTag,
+    releaseNotes: "",
+    candidates,
+    commits,
+    model: analysisModel,
+    analysisConcurrency,
+    ...(input.analysisModelOptions ? { modelOptions: input.analysisModelOptions } : {}),
+    ...(input.analysisProviderOptions ? { providerOptions: input.analysisProviderOptions } : {}),
+    providerService: input.providerService,
+    ...(input.progress ? { progress: input.progress } : {}),
+  });
 
   const intake: UpstreamSyncReleaseIntake = {
     schemaVersion: UPSTREAM_SYNC_SCHEMA_VERSION,
@@ -1288,17 +1653,15 @@ async function resolveReleaseData(input: {
     compareUrl: `https://github.com/${ensured.forkMetadata.upstream.repo}/compare/${previousTag}...${input.tag}`,
     fetchedAt: nowIso(),
     releaseNotes: "",
-    analysis,
-    candidates,
+    analysis: enriched.analysis,
+    candidates: enriched.candidates,
   };
-  await writeJsonFile(ensured.paths.intakePath(input.tag), intake);
-
   const triage = (await readReleaseTriage(ensured.paths, input.tag)) ?? buildEmptyTriage(input.tag);
-  const validIds = new Set(candidates.map((candidate) => candidate.id));
+  const validIds = new Set(enriched.candidates.map((candidate) => candidate.id));
   const existingDecisions = triage.decisions.filter((decision) =>
     validIds.has(decision.candidateId),
   );
-  const autoDetectedAlreadyPresentDecisions = candidates
+  const autoDetectedAlreadyPresentDecisions = enriched.candidates
     .filter((candidate) => candidate.recommendedDecision === "already-present")
     .filter(
       (candidate) => !existingDecisions.some((decision) => decision.candidateId === candidate.id),
@@ -1312,8 +1675,6 @@ async function resolveReleaseData(input: {
     ...triage,
     decisions: [...existingDecisions, ...autoDetectedAlreadyPresentDecisions],
   };
-  await writeReleaseTriage(ensured.paths, normalizedTriage);
-
   const nextMetadata: UpstreamSyncForkMetadata = {
     ...ensured.forkMetadata,
     tracking: {
@@ -1321,9 +1682,18 @@ async function resolveReleaseData(input: {
       lastFetchedReleaseTag: input.tag,
     },
   };
-  await writeForkMetadata(ensured.paths, nextMetadata);
+  return {
+    intake,
+    triage: normalizedTriage,
+    metadata: nextMetadata,
+    report: mergeReleaseReport(intake, normalizedTriage),
+  };
+}
 
-  return mergeReleaseReport(intake, normalizedTriage);
+async function persistReleaseData(paths: SyncPaths, data: BuildReleaseDataResult): Promise<void> {
+  await writeJsonFile(paths.intakePath(data.intake.tag), data.intake);
+  await writeReleaseTriage(paths, data.triage);
+  await writeForkMetadata(paths, data.metadata);
 }
 
 function collectCachedReleaseTags(paths: SyncPaths): Promise<string[]> {
@@ -1469,6 +1839,49 @@ function buildImplementationPrompt(
   };
 }
 
+async function resolveNextReleaseTag(cwd: string): Promise<{
+  paths: SyncPaths;
+  forkMetadata: UpstreamSyncForkMetadata;
+  nextTag: string | null;
+}> {
+  await appendUpstreamDebugLog(cwd, "resolveNextReleaseTag:start");
+  const ensured = await ensureSyncConfig(cwd);
+  const tags = await listStableReleaseTags(ensured.paths, ensured.forkMetadata.upstream.repo);
+  const currentIndex = tags.indexOf(ensured.forkMetadata.tracking.lastFullyTriagedReleaseTag);
+  const result = {
+    paths: ensured.paths,
+    forkMetadata: ensured.forkMetadata,
+    nextTag: currentIndex >= 0 ? (tags[currentIndex + 1] ?? null) : null,
+  };
+  await appendUpstreamDebugLog(cwd, "resolveNextReleaseTag:completed", {
+    nextTag: result.nextTag,
+    currentIndex,
+    lastFullyTriagedReleaseTag: ensured.forkMetadata.tracking.lastFullyTriagedReleaseTag,
+  });
+  return result;
+}
+
+async function withPromiseTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+        timeout.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 function toUpstreamSyncError(error: unknown): UpstreamSyncError {
   if (
     typeof error === "object" &&
@@ -1490,8 +1903,274 @@ function toUpstreamSyncError(error: unknown): UpstreamSyncError {
   });
 }
 
+export const UpstreamSyncTestHelpers = {
+  buildIdleReviewState,
+  buildStartingReviewState,
+  ensureSyncConfig,
+  readReleaseIntake,
+  readReleaseTriage,
+  resolveSyncPaths,
+  updateReviewState,
+  writeJsonFile,
+};
+
 const makeUpstreamSync = Effect.gen(function* () {
   const providerService = yield* ProviderService;
+  const reviewStatePubSub = yield* PubSub.unbounded<UpstreamSyncReviewState>();
+  const jobs = new Map<string, ActiveReviewJob>();
+
+  const publishReviewState = (state: UpstreamSyncReviewState): void => {
+    void Effect.runPromise(PubSub.publish(reviewStatePubSub, state)).catch((error) => {
+      logger.warn("failed to publish upstream review state", {
+        cwd: state.cwd,
+        status: state.status,
+        phase: state.phase,
+        releaseTag: state.releaseTag,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
+  const updateJobState = async (
+    cwd: string,
+    patch: Partial<UpstreamSyncReviewState> & { phase?: UpstreamSyncReviewPhase },
+  ): Promise<UpstreamSyncReviewState> => {
+    const current = jobs.get(cwd)?.state ?? buildIdleReviewState(cwd);
+    const next = updateReviewState(current, patch);
+    jobs.set(cwd, {
+      state: next,
+      promise: jobs.get(cwd)?.promise ?? null,
+    });
+    publishReviewState(next);
+    return next;
+  };
+
+  const setJob = (cwd: string, state: UpstreamSyncReviewState, promise: Promise<void> | null) => {
+    jobs.set(cwd, { state, promise });
+  };
+
+  const runReviewJob = async (input: UpstreamSyncStartNextReleaseReviewInput): Promise<void> => {
+    const initialState = jobs.get(input.cwd)?.state ?? buildIdleReviewState(input.cwd);
+    const analysisConcurrency = clampAnalysisConcurrency(input.analysisConcurrency);
+    const activeCandidatesById = new Map<string, ActiveCandidateRuntimeState>();
+    let candidateCount: number | null = null;
+    let completedCandidateCount = 0;
+    let lastActiveCandidateId: string | null = null;
+
+    const publishAnalyzingState = (
+      patch: Partial<UpstreamSyncReviewState> & { phase?: UpstreamSyncReviewPhase } = {},
+    ) => {
+      const activeCandidates = [...activeCandidatesById.values()].toSorted(
+        (left, right) => left.index - right.index,
+      );
+      const currentCandidate =
+        (lastActiveCandidateId ? activeCandidatesById.get(lastActiveCandidateId) : null) ??
+        activeCandidates[0] ??
+        null;
+      const queuedCandidateCount =
+        candidateCount === null
+          ? null
+          : Math.max(candidateCount - completedCandidateCount - activeCandidates.length, 0);
+      void updateJobState(input.cwd, {
+        phase: "analyzing",
+        candidateCount,
+        completedCandidateCount,
+        maxConcurrency: analysisConcurrency,
+        runningCandidateCount: activeCandidates.length,
+        queuedCandidateCount,
+        activeCandidates,
+        currentCandidateId: currentCandidate?.id ?? null,
+        currentCandidateTitle: currentCandidate?.title ?? null,
+        currentCandidateIndex: currentCandidate?.index ?? null,
+        lastProviderProgress: currentCandidate?.lastProviderProgress ?? null,
+        ...patch,
+      });
+    };
+
+    try {
+      await appendUpstreamDebugLog(input.cwd, "runReviewJob:start", {
+        startedAt: initialState.startedAt,
+      });
+      const reviewPromise = (async () => {
+        const { paths, nextTag } = await resolveNextReleaseTag(input.cwd);
+        if (!nextTag) {
+          await appendUpstreamDebugLog(input.cwd, "runReviewJob:no-next-tag");
+          await updateJobState(input.cwd, {
+            status: "completed",
+            phase: "completed",
+            releaseTag: null,
+            previousTag: null,
+            completedAt: nowIso(),
+            candidateCount: null,
+            completedCandidateCount: 0,
+            maxConcurrency: analysisConcurrency,
+            runningCandidateCount: 0,
+            queuedCandidateCount: null,
+            activeCandidates: [],
+            currentCandidateId: null,
+            currentCandidateTitle: null,
+            currentCandidateIndex: null,
+            lastProviderProgress: null,
+            message: "No newer upstream release is available to review.",
+            error: null,
+          });
+          return;
+        }
+        await appendUpstreamDebugLog(input.cwd, "runReviewJob:next-tag", {
+          nextTag,
+        });
+        await updateJobState(input.cwd, {
+          status: "running",
+          phase: "fetching-upstream",
+          releaseTag: nextTag,
+          previousTag: null,
+          startedAt: initialState.startedAt ?? nowIso(),
+          completedAt: null,
+          candidateCount: null,
+          completedCandidateCount: 0,
+          maxConcurrency: analysisConcurrency,
+          runningCandidateCount: 0,
+          queuedCandidateCount: null,
+          activeCandidates: [],
+          currentCandidateId: null,
+          currentCandidateTitle: null,
+          currentCandidateIndex: null,
+          lastProviderProgress: null,
+          message: `Reviewing upstream release ${nextTag}.`,
+          error: null,
+        });
+        const releaseData = await buildReleaseData({
+          cwd: input.cwd,
+          tag: nextTag,
+          ...(input.forceRefresh !== undefined ? { forceRefresh: input.forceRefresh } : {}),
+          ...(input.analysisModel ? { analysisModel: input.analysisModel } : {}),
+          ...(input.analysisModelOptions
+            ? { analysisModelOptions: input.analysisModelOptions }
+            : {}),
+          ...(input.analysisProviderOptions
+            ? { analysisProviderOptions: input.analysisProviderOptions }
+            : {}),
+          analysisConcurrency,
+          providerService,
+          progress: {
+            onCandidateCount: (count) => {
+              candidateCount = count;
+              publishAnalyzingState({
+                message:
+                  count > 0
+                    ? `Analyzing ${count} upstream candidate${count === 1 ? "" : "s"} with ${analysisConcurrency} worker${analysisConcurrency === 1 ? "" : "s"}.`
+                    : "No upstream candidates found for this release.",
+              });
+            },
+            onCandidateStarted: ({ candidate, index, total }) => {
+              activeCandidatesById.set(candidate.id, {
+                id: candidate.id,
+                title: candidate.title,
+                index,
+                lastProviderProgress: null,
+              });
+              lastActiveCandidateId = candidate.id;
+              publishAnalyzingState({
+                message: `Analyzing ${completedCandidateCount} of ${total} candidates with ${analysisConcurrency} worker${analysisConcurrency === 1 ? "" : "s"} active.`,
+              });
+            },
+            onCandidateCompleted: ({ candidate, total, completedCount }) => {
+              completedCandidateCount = completedCount;
+              activeCandidatesById.delete(candidate.id);
+              if (lastActiveCandidateId === candidate.id) {
+                lastActiveCandidateId = null;
+              }
+              publishAnalyzingState({
+                message: `Completed ${completedCount} of ${total} candidates.`,
+              });
+            },
+            onProviderProgress: ({ candidate, index, message }) => {
+              activeCandidatesById.set(candidate.id, {
+                id: candidate.id,
+                title: candidate.title,
+                index,
+                lastProviderProgress: truncateText(message, 240),
+              });
+              lastActiveCandidateId = candidate.id;
+              publishAnalyzingState();
+            },
+          },
+        });
+        await appendUpstreamDebugLog(input.cwd, "runReviewJob:buildReleaseData-completed", {
+          releaseTag: releaseData.report.tag,
+          candidateCount: releaseData.report.candidates.length,
+        });
+        await updateJobState(input.cwd, {
+          phase: "persisting",
+          previousTag: releaseData.report.previousTag,
+          releaseTag: releaseData.report.tag,
+          runningCandidateCount: 0,
+          queuedCandidateCount: 0,
+          activeCandidates: [],
+          currentCandidateId: null,
+          currentCandidateTitle: null,
+          currentCandidateIndex: null,
+          lastProviderProgress: null,
+          message: `Persisting review for ${releaseData.report.tag}.`,
+        });
+        await persistReleaseData(paths, releaseData);
+        await appendUpstreamDebugLog(input.cwd, "runReviewJob:persistReleaseData-completed", {
+          releaseTag: releaseData.report.tag,
+        });
+        await updateJobState(input.cwd, {
+          status: "completed",
+          phase: "completed",
+          releaseTag: releaseData.report.tag,
+          previousTag: releaseData.report.previousTag,
+          completedAt: nowIso(),
+          runningCandidateCount: 0,
+          queuedCandidateCount: 0,
+          activeCandidates: [],
+          currentCandidateId: null,
+          currentCandidateTitle: null,
+          currentCandidateIndex: null,
+          lastProviderProgress: null,
+          message: `Completed review for ${releaseData.report.tag}.`,
+          error: null,
+        });
+      })();
+
+      await withPromiseTimeout(
+        reviewPromise,
+        UPSTREAM_ANALYSIS_REVIEW_MAX_TIMEOUT_MS,
+        `Upstream review timed out after ${Math.round(UPSTREAM_ANALYSIS_REVIEW_MAX_TIMEOUT_MS / 60_000)} minutes.`,
+      );
+    } catch (error) {
+      await appendUpstreamDebugLog(input.cwd, "runReviewJob:failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await updateJobState(input.cwd, {
+        status: "failed",
+        phase: "failed",
+        completedAt: nowIso(),
+        maxConcurrency: analysisConcurrency,
+        runningCandidateCount: 0,
+        queuedCandidateCount:
+          candidateCount === null ? null : Math.max(candidateCount - completedCandidateCount, 0),
+        activeCandidates: [],
+        currentCandidateId: null,
+        currentCandidateTitle: null,
+        currentCandidateIndex: null,
+        lastProviderProgress: null,
+        message: "Upstream review failed.",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    } finally {
+      const current = jobs.get(input.cwd)?.state ?? buildIdleReviewState(input.cwd);
+      await appendUpstreamDebugLog(input.cwd, "runReviewJob:finally", {
+        finalStatus: current.status,
+        finalPhase: current.phase,
+        finalReleaseTag: current.releaseTag,
+      });
+      setJob(input.cwd, current, null);
+    }
+  };
 
   const service: UpstreamSyncShape = {
     getStatus: (input) =>
@@ -1499,34 +2178,64 @@ const makeUpstreamSync = Effect.gen(function* () {
         try: () => buildStatus(input),
         catch: toUpstreamSyncError,
       }),
-    fetchNextRelease: (input) =>
+    startNextReleaseReview: (input) =>
       Effect.tryPromise({
         try: async () => {
-          const ensured = await ensureSyncConfig(input.cwd);
-          const tags = await listStableReleaseTags(
-            ensured.paths,
-            ensured.forkMetadata.upstream.repo,
-          );
-          const currentIndex = tags.indexOf(
-            ensured.forkMetadata.tracking.lastFullyTriagedReleaseTag,
-          );
-          const nextTag = currentIndex >= 0 ? (tags[currentIndex + 1] ?? null) : null;
-          if (!nextTag) {
-            return null;
-          }
-          return resolveReleaseData({
-            cwd: input.cwd,
-            tag: nextTag,
-            ...(input.forceRefresh !== undefined ? { forceRefresh: input.forceRefresh } : {}),
-            ...(input.analysisModel ? { analysisModel: input.analysisModel } : {}),
-            ...(input.analysisModelOptions
-              ? { analysisModelOptions: input.analysisModelOptions }
-              : {}),
-            ...(input.analysisProviderOptions
-              ? { analysisProviderOptions: input.analysisProviderOptions }
-              : {}),
-            providerService,
+          await appendUpstreamDebugLog(input.cwd, "startNextReleaseReview:invoked", {
+            forceRefresh: input.forceRefresh ?? null,
+            analysisModel: input.analysisModel ?? null,
+            reasoningEffort: input.analysisModelOptions?.reasoningEffort ?? null,
           });
+          const existing = jobs.get(input.cwd);
+          if (existing?.promise) {
+            await appendUpstreamDebugLog(input.cwd, "startNextReleaseReview:reuse-running-job", {
+              releaseTag: existing.state.releaseTag,
+              phase: existing.state.phase,
+            });
+            logger.info("reusing running upstream review job", {
+              cwd: input.cwd,
+              releaseTag: existing.state.releaseTag,
+              phase: existing.state.phase,
+            });
+            return existing.state;
+          }
+          const startedAt = nowIso();
+          const runningState = buildStartingReviewState(input.cwd, startedAt);
+          await appendUpstreamDebugLog(input.cwd, "startNextReleaseReview:created-running-state", {
+            startedAt,
+          });
+          logger.info("starting upstream review job", {
+            cwd: input.cwd,
+            model: input.analysisModel?.trim() || DEFAULT_MODEL_BY_PROVIDER.codex,
+            reasoningEffort: input.analysisModelOptions?.reasoningEffort ?? null,
+          });
+          const promise = runReviewJob(input).catch((error) => {
+            logger.warn("upstream review job failed", {
+              cwd: input.cwd,
+              releaseTag: jobs.get(input.cwd)?.state.releaseTag,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+          setJob(input.cwd, runningState, promise);
+          publishReviewState(runningState);
+          await appendUpstreamDebugLog(input.cwd, "startNextReleaseReview:returning", {
+            status: runningState.status,
+            phase: runningState.phase,
+          });
+          return runningState;
+        },
+        catch: toUpstreamSyncError,
+      }),
+    getReviewState: (input) =>
+      Effect.tryPromise({
+        try: async () => {
+          const state = jobs.get(input.cwd)?.state ?? buildIdleReviewState(input.cwd);
+          await appendUpstreamDebugLog(input.cwd, "getReviewState:returning", {
+            status: state.status,
+            phase: state.phase,
+            releaseTag: state.releaseTag,
+          });
+          return state;
         },
         catch: toUpstreamSyncError,
       }),
@@ -1538,11 +2247,13 @@ const makeUpstreamSync = Effect.gen(function* () {
           if (cached) {
             return cached;
           }
-          return resolveReleaseData({
-            cwd: input.cwd,
-            tag: input.tag,
-            providerService,
-          });
+          return (
+            await buildReleaseData({
+              cwd: input.cwd,
+              tag: input.tag,
+              providerService,
+            })
+          ).report;
         },
         catch: toUpstreamSyncError,
       }),
@@ -1592,15 +2303,18 @@ const makeUpstreamSync = Effect.gen(function* () {
           const ensured = await ensureSyncConfig(input.cwd);
           const report =
             (await loadReleaseReportFromDisk(ensured.paths, input.tag)) ??
-            (await resolveReleaseData({
-              cwd: input.cwd,
-              tag: input.tag,
-              providerService,
-            }));
+            (
+              await buildReleaseData({
+                cwd: input.cwd,
+                tag: input.tag,
+                providerService,
+              })
+            ).report;
           return buildImplementationPrompt(report);
         },
         catch: toUpstreamSyncError,
       }),
+    streamReviewStates: Stream.fromPubSub(reviewStatePubSub),
   };
 
   return service;

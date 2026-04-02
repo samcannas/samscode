@@ -6,6 +6,7 @@ import {
   type SpeechToTextSessionEvent,
   type SpeechToTextState,
   ServerConfigUpdatedPayload,
+  type UpstreamSyncReviewState,
   WS_CHANNELS,
   WS_METHODS,
   type WsWelcomePayload,
@@ -19,6 +20,8 @@ const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
 const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
 const speechToTextStateListeners = new Set<(payload: SpeechToTextState) => void>();
 const speechToTextSessionEventListeners = new Set<(payload: SpeechToTextSessionEvent) => void>();
+const upstreamSyncReviewStateListeners = new Set<(payload: UpstreamSyncReviewState) => void>();
+const UPSTREAM_SYNC_RELEASE_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Subscribe to the server welcome message. If a welcome was already received
@@ -95,6 +98,26 @@ export function onSpeechToTextSessionEvent(
   };
 }
 
+export function onUpstreamSyncReviewStateChanged(
+  listener: (payload: UpstreamSyncReviewState) => void,
+): () => void {
+  upstreamSyncReviewStateListeners.add(listener);
+
+  const latestState =
+    instance?.transport.getLatestPush(WS_CHANNELS.upstreamSyncReviewUpdated)?.data ?? null;
+  if (latestState) {
+    try {
+      listener(latestState);
+    } catch {
+      // Swallow listener errors
+    }
+  }
+
+  return () => {
+    upstreamSyncReviewStateListeners.delete(listener);
+  };
+}
+
 export function createWsNativeApi(): NativeApi {
   if (instance) return instance.api;
 
@@ -133,6 +156,16 @@ export function createWsNativeApi(): NativeApi {
   transport.subscribe(WS_CHANNELS.speechToTextSessionEvent, (message) => {
     const payload = message.data;
     for (const listener of speechToTextSessionEventListeners) {
+      try {
+        listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+  transport.subscribe(WS_CHANNELS.upstreamSyncReviewUpdated, (message) => {
+    const payload = message.data;
+    for (const listener of upstreamSyncReviewStateListeners) {
       try {
         listener(payload);
       } catch {
@@ -261,12 +294,22 @@ export function createWsNativeApi(): NativeApi {
     },
     upstreamSync: {
       getStatus: (input) => transport.request(WS_METHODS.upstreamSyncGetStatus, input),
-      fetchNextRelease: (input) =>
-        transport.request(WS_METHODS.upstreamSyncFetchNextRelease, input),
-      getRelease: (input) => transport.request(WS_METHODS.upstreamSyncGetRelease, input),
+      startNextReleaseReview: (input) =>
+        transport.request(WS_METHODS.upstreamSyncStartNextReleaseReview, input),
+      getReviewState: (input) => transport.request(WS_METHODS.upstreamSyncGetReviewState, input),
+      getRelease: (input) =>
+        transport.request(WS_METHODS.upstreamSyncGetRelease, input, {
+          timeoutMs: UPSTREAM_SYNC_RELEASE_TIMEOUT_MS,
+        }),
       updateCandidate: (input) => transport.request(WS_METHODS.upstreamSyncUpdateCandidate, input),
       generateImplementationPrompt: (input) =>
         transport.request(WS_METHODS.upstreamSyncGenerateImplementationPrompt, input),
+      onReviewStateChanged: (callback) =>
+        transport.subscribe(
+          WS_CHANNELS.upstreamSyncReviewUpdated,
+          (message) => callback(message.data),
+          { replayLatest: true },
+        ),
     },
   };
 

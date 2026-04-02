@@ -58,9 +58,11 @@ import {
   SpeechToTextUpdatePreferencesInput,
 } from "./speechToText";
 import {
-  UpstreamSyncFetchNextReleaseInput,
   UpstreamSyncGenerateImplementationPromptInput,
+  UpstreamSyncGetReviewStateInput,
   UpstreamSyncGetReleaseInput,
+  UpstreamSyncReviewState,
+  UpstreamSyncStartNextReleaseReviewInput,
   UpstreamSyncStatusInput,
   UpstreamSyncUpdateCandidateInput,
 } from "./upstreamSync";
@@ -119,7 +121,8 @@ export const WS_METHODS = {
   speechToTextStopSession: "speechToText.stopSession",
   speechToTextCancelSession: "speechToText.cancelSession",
   upstreamSyncGetStatus: "upstreamSync.getStatus",
-  upstreamSyncFetchNextRelease: "upstreamSync.fetchNextRelease",
+  upstreamSyncStartNextReleaseReview: "upstreamSync.startNextReleaseReview",
+  upstreamSyncGetReviewState: "upstreamSync.getReviewState",
   upstreamSyncGetRelease: "upstreamSync.getRelease",
   upstreamSyncUpdateCandidate: "upstreamSync.updateCandidate",
   upstreamSyncGenerateImplementationPrompt: "upstreamSync.generateImplementationPrompt",
@@ -133,6 +136,7 @@ export const WS_CHANNELS = {
   serverConfigUpdated: "server.configUpdated",
   speechToTextUpdated: "speechToText.updated",
   speechToTextSessionEvent: "speechToText.sessionEvent",
+  upstreamSyncReviewUpdated: "upstreamSync.reviewUpdated",
 } as const;
 
 // -- Tagged Union of all request body schemas ─────────────────────────
@@ -206,7 +210,11 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.speechToTextStopSession, SpeechToTextStopSessionInput),
   tagRequestBody(WS_METHODS.speechToTextCancelSession, SpeechToTextCancelSessionInput),
   tagRequestBody(WS_METHODS.upstreamSyncGetStatus, UpstreamSyncStatusInput),
-  tagRequestBody(WS_METHODS.upstreamSyncFetchNextRelease, UpstreamSyncFetchNextReleaseInput),
+  tagRequestBody(
+    WS_METHODS.upstreamSyncStartNextReleaseReview,
+    UpstreamSyncStartNextReleaseReviewInput,
+  ),
+  tagRequestBody(WS_METHODS.upstreamSyncGetReviewState, UpstreamSyncGetReviewStateInput),
   tagRequestBody(WS_METHODS.upstreamSyncGetRelease, UpstreamSyncGetReleaseInput),
   tagRequestBody(WS_METHODS.upstreamSyncUpdateCandidate, UpstreamSyncUpdateCandidateInput),
   tagRequestBody(
@@ -249,6 +257,7 @@ export interface WsPushPayloadByChannel {
   readonly [WS_CHANNELS.terminalEvent]: typeof TerminalEvent.Type;
   readonly [WS_CHANNELS.speechToTextUpdated]: SpeechToTextState;
   readonly [WS_CHANNELS.speechToTextSessionEvent]: SpeechToTextSessionEvent;
+  readonly [WS_CHANNELS.upstreamSyncReviewUpdated]: UpstreamSyncReviewState;
   readonly [ORCHESTRATION_WS_CHANNELS.domainEvent]: OrchestrationEvent;
 }
 
@@ -280,6 +289,10 @@ export const WsPushSpeechToTextSessionEvent = makeWsPushSchema(
   WS_CHANNELS.speechToTextSessionEvent,
   SpeechToTextSessionEvent,
 );
+export const WsPushUpstreamSyncReviewUpdated = makeWsPushSchema(
+  WS_CHANNELS.upstreamSyncReviewUpdated,
+  UpstreamSyncReviewState,
+);
 export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   ORCHESTRATION_WS_CHANNELS.domainEvent,
   OrchestrationEvent,
@@ -291,6 +304,7 @@ export const WsPushChannelSchema = Schema.Literals([
   WS_CHANNELS.terminalEvent,
   WS_CHANNELS.speechToTextUpdated,
   WS_CHANNELS.speechToTextSessionEvent,
+  WS_CHANNELS.upstreamSyncReviewUpdated,
   ORCHESTRATION_WS_CHANNELS.domainEvent,
 ]);
 export type WsPushChannelSchema = typeof WsPushChannelSchema.Type;
@@ -301,6 +315,7 @@ export const WsPush = Schema.Union([
   WsPushTerminalEvent,
   WsPushSpeechToTextUpdated,
   WsPushSpeechToTextSessionEvent,
+  WsPushUpstreamSyncReviewUpdated,
   WsPushOrchestrationDomainEvent,
 ]);
 export type WsPush = typeof WsPush.Type;

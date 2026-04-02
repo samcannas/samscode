@@ -2,6 +2,7 @@ import {
   type CodexReasoningEffort,
   type UpstreamSyncDecision,
   type UpstreamSyncReleaseCandidate,
+  type UpstreamSyncReviewPhase,
   DEFAULT_MODEL_BY_PROVIDER,
 } from "@samscode/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,18 +29,24 @@ import {
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { truncateTitle } from "~/truncateTitle";
 import {
+  subscribeToUpstreamSyncReviewState,
   upstreamSyncQueryKeys,
   upstreamSyncReleaseQueryOptions,
+  upstreamSyncReviewStateQueryOptions,
   upstreamSyncStatusQueryOptions,
 } from "~/lib/upstreamSyncReactQuery";
 import { useStore } from "~/store";
 import { getAppModelOptions, useAppSettings } from "~/appSettings";
+import {
+  getUpstreamReviewButtonLabel,
+  isUpstreamReviewBusy,
+  shouldShowUpstreamReviewStartupCard,
+} from "./UpstreamSyncSection.logic";
 
 const DECISION_OPTIONS: Array<{ value: Exclude<UpstreamSyncDecision, "pending">; label: string }> =
   [
     { value: "apply", label: "Apply" },
     { value: "ignore", label: "Ignore" },
-    { value: "defer", label: "Defer" },
     { value: "already-present", label: "Already present" },
   ];
 
@@ -75,6 +82,25 @@ function formatDuration(durationMs: number): string {
   return `${(durationMs / 1_000).toFixed(1)} s`;
 }
 
+function formatReviewPhase(phase: UpstreamSyncReviewPhase): string {
+  switch (phase) {
+    case "idle":
+      return "Idle";
+    case "fetching-upstream":
+      return "Fetching upstream";
+    case "building-candidates":
+      return "Building candidates";
+    case "analyzing":
+      return "Analyzing candidates";
+    case "persisting":
+      return "Persisting results";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+  }
+}
+
 export function UpstreamSyncSection(props: {
   serverCwd: string | null;
   enableAssistantStreaming: boolean;
@@ -88,16 +114,21 @@ export function UpstreamSyncSection(props: {
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
   const [activeReleaseTag, setActiveReleaseTag] = useState<string | null>(null);
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
-  const [isFetchingNextRelease, setIsFetchingNextRelease] = useState(false);
+  const [isStartingReview, setIsStartingReview] = useState(false);
   const [isStartingImplementation, setIsStartingImplementation] = useState(false);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
 
   const statusQuery = useQuery(upstreamSyncStatusQueryOptions({ cwd: serverCwd }));
+  const reviewStateQuery = useQuery(upstreamSyncReviewStateQueryOptions({ cwd: serverCwd }));
+  const reviewState = reviewStateQuery.data;
+  const isReviewRunning = reviewState?.status === "running";
+  const shouldFetchActiveRelease =
+    activeReleaseTag !== null && (!isReviewRunning || activeReleaseTag !== reviewState?.releaseTag);
   const releaseQuery = useQuery(
     upstreamSyncReleaseQueryOptions({
       cwd: serverCwd,
       tag: activeReleaseTag,
-      enabled: activeReleaseTag !== null,
+      enabled: shouldFetchActiveRelease,
     }),
   );
 
@@ -137,13 +168,40 @@ export function UpstreamSyncSection(props: {
     };
   }, [settings.codexBinaryPath, settings.codexHomePath]);
 
+  useEffect(
+    () => subscribeToUpstreamSyncReviewState({ cwd: serverCwd, queryClient }),
+    [queryClient, serverCwd],
+  );
+
   useEffect(() => {
-    const nextTag = statusQuery.data?.activeReleaseTag ?? null;
+    if (reviewState?.status === "running") {
+      return;
+    }
+    const nextTag =
+      reviewState?.status === "completed" && reviewState.releaseTag
+        ? reviewState.releaseTag
+        : (statusQuery.data?.activeReleaseTag ?? null);
     if (!nextTag) {
       return;
     }
     setActiveReleaseTag((existing) => existing ?? nextTag);
-  }, [statusQuery.data?.activeReleaseTag]);
+  }, [reviewState?.releaseTag, reviewState?.status, statusQuery.data?.activeReleaseTag]);
+
+  useEffect(() => {
+    if (reviewState?.status === "completed" && reviewState.releaseTag) {
+      setActiveReleaseTag(reviewState.releaseTag);
+    }
+  }, [reviewState?.releaseTag, reviewState?.status]);
+
+  useEffect(() => {
+    if (
+      reviewState?.status === "running" ||
+      reviewState?.status === "completed" ||
+      reviewState?.status === "failed"
+    ) {
+      setIsStartingReview(false);
+    }
+  }, [reviewState?.status]);
 
   useEffect(() => {
     const release = releaseQuery.data;
@@ -169,13 +227,41 @@ export function UpstreamSyncSection(props: {
   }, [queryClient]);
 
   const reviewNextRelease = useCallback(async () => {
-    if (!serverCwd || isFetchingNextRelease) {
+    if (!serverCwd || reviewStateQuery.data?.status === "running") {
       return;
     }
-    setIsFetchingNextRelease(true);
+    setIsStartingReview(true);
+    const optimisticStartedAt = new Date().toISOString();
+    queryClient.setQueryData(upstreamSyncQueryKeys.reviewState(serverCwd), {
+      cwd: serverCwd,
+      status: "running",
+      phase: "fetching-upstream",
+      releaseTag: null,
+      previousTag: null,
+      startedAt: optimisticStartedAt,
+      updatedAt: optimisticStartedAt,
+      completedAt: null,
+      candidateCount: null,
+      completedCandidateCount: 0,
+      maxConcurrency: 4,
+      runningCandidateCount: 0,
+      queuedCandidateCount: null,
+      activeCandidates: [],
+      currentCandidateId: null,
+      currentCandidateTitle: null,
+      currentCandidateIndex: null,
+      lastProviderProgress: null,
+      message: "Checking for the next upstream release.",
+      error: null,
+    });
     try {
+      console.info("upstream review requested", {
+        cwd: serverCwd,
+        model: selectedAnalysisModel,
+        reasoningEffort: selectedAnalysisReasoningEffort,
+      });
       const api = ensureNativeApi();
-      const release = await api.upstreamSync.fetchNextRelease({
+      const reviewState = await api.upstreamSync.startNextReleaseReview({
         cwd: serverCwd,
         forceRefresh: true,
         analysisModel: selectedAnalysisModel,
@@ -184,31 +270,43 @@ export function UpstreamSyncSection(props: {
         },
         ...(analysisProviderOptions ? { analysisProviderOptions } : {}),
       });
-      if (!release) {
+      console.info("upstream review start acknowledged", reviewState);
+      queryClient.setQueryData(upstreamSyncQueryKeys.reviewState(serverCwd), reviewState);
+      if (reviewState.status === "completed" && !reviewState.releaseTag) {
         toastManager.add({
           type: "info",
           title: "No newer T3 releases",
-          description: "This repo is already caught up with the latest fetched upstream release.",
+          description: reviewState.message ?? "No newer upstream release is available to review.",
         });
         await refreshStatus();
-        return;
       }
-      queryClient.setQueryData(upstreamSyncQueryKeys.release(serverCwd, release.tag), release);
-      setActiveReleaseTag(release.tag);
-      await refreshStatus();
     } catch (error) {
+      const api = ensureNativeApi();
+      try {
+        const latestState = await api.upstreamSync.getReviewState({ cwd: serverCwd });
+        if (latestState.status !== "idle") {
+          console.warn("upstream review start timed out but server state is active", latestState);
+          queryClient.setQueryData(upstreamSyncQueryKeys.reviewState(serverCwd), latestState);
+          setIsStartingReview(false);
+          return;
+        }
+      } catch (stateError) {
+        console.error("upstream review state probe failed", stateError);
+      }
+      setIsStartingReview(false);
+      console.error("upstream review start failed", error);
       toastManager.add({
         type: "error",
         title: "Could not review next release",
-        description: error instanceof Error ? error.message : "Upstream sync fetch failed.",
+        description: error instanceof Error ? error.message : "Upstream sync review failed.",
       });
-    } finally {
-      setIsFetchingNextRelease(false);
+      return;
     }
+    setIsStartingReview(false);
   }, [
-    isFetchingNextRelease,
     queryClient,
     refreshStatus,
+    reviewStateQuery.data?.status,
     selectedAnalysisModel,
     analysisProviderOptions,
     selectedAnalysisReasoningEffort,
@@ -355,6 +453,26 @@ export function UpstreamSyncSection(props: {
 
   const canImplement =
     selectedCandidateCount > 0 && currentProject !== null && activeReleaseTag !== null;
+  const isReviewBusy = isUpstreamReviewBusy({
+    isStartingReview,
+    reviewStatus: reviewState?.status,
+  });
+  const reviewButtonLabel = getUpstreamReviewButtonLabel({
+    isStartingReview,
+    reviewStatus: reviewState?.status,
+  });
+  const showStartupStatusCard = shouldShowUpstreamReviewStartupCard({
+    isStartingReview,
+    reviewStatus: reviewState?.status,
+    reviewPhase: reviewState?.phase,
+  });
+  const reviewProgressKnown =
+    reviewState?.candidateCount !== null && reviewState?.candidateCount !== undefined;
+  const reviewProgressPercent =
+    reviewProgressKnown && reviewState.candidateCount > 0
+      ? Math.min(100, (reviewState.completedCandidateCount / reviewState.candidateCount) * 100)
+      : 0;
+  const activeReviewCandidates = reviewState?.activeCandidates.slice(0, 4) ?? [];
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
@@ -370,9 +488,9 @@ export function UpstreamSyncSection(props: {
           size="xs"
           variant="outline"
           onClick={() => void reviewNextRelease()}
-          disabled={!serverCwd || isFetchingNextRelease}
+          disabled={!serverCwd || isReviewBusy}
         >
-          {isFetchingNextRelease ? "Reviewing..." : "Review next release"}
+          {reviewButtonLabel}
         </Button>
       </div>
 
@@ -418,7 +536,7 @@ export function UpstreamSyncSection(props: {
               <p className="text-xs font-medium text-foreground">Analysis model</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Review Next Release uses this model to inspect the next T3 release and recommend
-                whether each candidate should be applied, ignored, deferred, or is already present.
+                whether each candidate should be applied, ignored, or is already present.
               </p>
             </div>
             <Select
@@ -514,6 +632,118 @@ export function UpstreamSyncSection(props: {
           </div>
         ) : null}
 
+        {showStartupStatusCard ? (
+          <div className="rounded-lg border border-border bg-background px-3 py-3 text-xs text-muted-foreground">
+            Checking for the next upstream release...
+          </div>
+        ) : null}
+
+        {reviewState ? (
+          <div
+            className={
+              reviewState.status === "failed"
+                ? "rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-3"
+                : "rounded-lg border border-border bg-background px-3 py-3"
+            }
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-medium text-foreground">Review progress</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatReviewPhase(reviewState.phase)}
+                  {reviewState.releaseTag ? ` - ${reviewState.releaseTag}` : ""}
+                </p>
+              </div>
+              {reviewState.status !== "idle" ? (
+                <Badge variant="outline">
+                  {reviewState.status === "running"
+                    ? "Running"
+                    : reviewState.status === "completed"
+                      ? "Completed"
+                      : "Failed"}
+                </Badge>
+              ) : null}
+            </div>
+
+            {isReviewRunning ? (
+              <div className="mt-3 space-y-2">
+                {reviewProgressKnown ? (
+                  <>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-[width]"
+                        style={{ width: `${reviewProgressPercent}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {reviewState.completedCandidateCount} / {reviewState.candidateCount}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Waiting for candidate discovery before showing determinate progress.
+                  </p>
+                )}
+                {reviewState.currentCandidateTitle ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Current candidate:{" "}
+                    <span className="text-foreground">{reviewState.currentCandidateTitle}</span>
+                  </p>
+                ) : null}
+                {reviewState.maxConcurrency ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Analyzing with {reviewState.maxConcurrency} worker
+                    {reviewState.maxConcurrency === 1 ? "" : "s"}.
+                  </p>
+                ) : null}
+                {reviewState.runningCandidateCount > 0 ||
+                reviewState.queuedCandidateCount !== null ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Running {reviewState.runningCandidateCount}
+                    {reviewState.queuedCandidateCount !== null
+                      ? `, queued ${reviewState.queuedCandidateCount}`
+                      : ""}
+                  </p>
+                ) : null}
+                {activeReviewCandidates.length > 0 ? (
+                  <div className="space-y-2">
+                    {activeReviewCandidates.map((candidate) => (
+                      <div
+                        key={candidate.id}
+                        className="rounded-md border border-border/70 bg-background/70 px-2 py-2"
+                      >
+                        <p className="text-[11px] font-medium text-foreground">{candidate.title}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Candidate {candidate.index + 1}
+                        </p>
+                        {candidate.lastProviderProgress ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            {candidate.lastProviderProgress}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : reviewState.lastProviderProgress ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Provider progress:{" "}
+                    <span className="text-foreground">{reviewState.lastProviderProgress}</span>
+                  </p>
+                ) : null}
+                {reviewState.message ? (
+                  <p className="text-[11px] text-muted-foreground">{reviewState.message}</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {reviewState.status === "failed" && reviewState.error ? (
+              <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-3 text-xs text-destructive">
+                {reviewState.error}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {releaseQuery.data ? (
           <div className="space-y-4 rounded-xl border border-border bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -567,13 +797,7 @@ export function UpstreamSyncSection(props: {
             <div className="rounded-lg border border-border bg-background px-3 py-3">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs font-medium text-foreground">Analysis run</p>
-                <Badge variant="outline">
-                  {releaseQuery.data.analysis.source === "model"
-                    ? "Model-assisted"
-                    : releaseQuery.data.analysis.source === "partial-model"
-                      ? "Partial model"
-                      : "Heuristic fallback"}
-                </Badge>
+                <Badge variant="outline">Model</Badge>
               </div>
               <div className="mt-2 grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
                 <p>
@@ -601,15 +825,9 @@ export function UpstreamSyncSection(props: {
                   </span>
                 </p>
                 <p>
-                  Model-covered:{" "}
+                  Candidates:{" "}
                   <span className="text-foreground">
                     {releaseQuery.data.analysis.modeledCandidateCount}
-                  </span>
-                </p>
-                <p>
-                  Heuristic-covered:{" "}
-                  <span className="text-foreground">
-                    {releaseQuery.data.analysis.heuristicCandidateCount}
                   </span>
                 </p>
               </div>

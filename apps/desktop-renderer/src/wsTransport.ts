@@ -12,6 +12,7 @@ import { Result, Schema } from "effect";
 type PushListener<C extends WsPushChannel> = (message: WsPushMessage<C>) => void;
 
 interface PendingRequest {
+  method: string;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout> | null;
@@ -35,6 +36,14 @@ const isWebSocketResponseEnvelope = Schema.is(WebSocketResponse);
 
 const isWsPushMessage = (value: WsResponseMessage): value is WsPush =>
   "type" in value && value.type === "push";
+
+function isUpstreamSyncMethod(method: string): boolean {
+  return method.startsWith("upstreamSync.");
+}
+
+function isUpstreamSyncChannel(channel: string): boolean {
+  return channel.startsWith("upstreamSync.");
+}
 
 interface WsRequestEnvelope {
   id: string;
@@ -97,15 +106,30 @@ export class WsTransport {
 
     return new Promise<T>((resolve, reject) => {
       const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+      if (isUpstreamSyncMethod(method)) {
+        console.info("ws request started", {
+          id,
+          method,
+          timeoutMs,
+        });
+      }
       const timeout =
         timeoutMs > 0
           ? setTimeout(() => {
               this.pending.delete(id);
+              if (isUpstreamSyncMethod(method)) {
+                console.error("ws request timed out", {
+                  id,
+                  method,
+                  timeoutMs,
+                });
+              }
               reject(new Error(`Request timed out: ${method}`));
             }, timeoutMs)
           : null;
 
       this.pending.set(id, {
+        method,
         resolve: resolve as (result: unknown) => void,
         reject,
         timeout,
@@ -221,6 +245,13 @@ export class WsTransport {
 
     const message = result.success;
     if (isWsPushMessage(message)) {
+      if (isUpstreamSyncChannel(message.channel)) {
+        console.info("ws push received", {
+          channel: message.channel,
+          sequence: message.sequence,
+          data: message.data,
+        });
+      }
       this.latestPushByChannel.set(message.channel, message);
       const channelListeners = this.listeners.get(message.channel);
       if (channelListeners) {
@@ -250,10 +281,24 @@ export class WsTransport {
     this.pending.delete(message.id);
 
     if (message.error) {
+      if (isUpstreamSyncMethod(pending.method)) {
+        console.error("ws request failed", {
+          id: message.id,
+          method: pending.method,
+          error: message.error.message,
+        });
+      }
       pending.reject(new Error(message.error.message));
       return;
     }
 
+    if (isUpstreamSyncMethod(pending.method)) {
+      console.info("ws request completed", {
+        id: message.id,
+        method: pending.method,
+        result: message.result,
+      });
+    }
     pending.resolve(message.result);
   }
 

@@ -77,11 +77,13 @@ import type {
   SpeechToTextUpdatePreferencesInput,
 } from "./speechToText";
 import type {
-  UpstreamSyncFetchNextReleaseInput,
   UpstreamSyncGenerateImplementationPromptInput,
   UpstreamSyncImplementationPromptResult,
+  UpstreamSyncGetReviewStateInput,
   UpstreamSyncGetReleaseInput,
   UpstreamSyncReleaseReport,
+  UpstreamSyncReviewState,
+  UpstreamSyncStartNextReleaseReviewInput,
   UpstreamSyncStatus,
   UpstreamSyncStatusInput,
   UpstreamSyncUpdateCandidateInput,
@@ -252,9 +254,11 @@ export interface NativeApi {
   };
   upstreamSync: {
     getStatus: (input: UpstreamSyncStatusInput) => Promise<UpstreamSyncStatus>;
-    fetchNextRelease: (
-      input: UpstreamSyncFetchNextReleaseInput,
-    ) => Promise<UpstreamSyncReleaseReport | null>;
+    startNextReleaseReview: (
+      input: UpstreamSyncStartNextReleaseReviewInput,
+    ) => Promise<UpstreamSyncReviewState>;
+    getReviewState: (input: UpstreamSyncGetReviewStateInput) => Promise<UpstreamSyncReviewState>;
+    onReviewStateChanged: (callback: (state: UpstreamSyncReviewState) => void) => () => void;
     getRelease: (input: UpstreamSyncGetReleaseInput) => Promise<UpstreamSyncReleaseReport>;
     updateCandidate: (
       input: UpstreamSyncUpdateCandidateInput,

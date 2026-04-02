@@ -1,15 +1,17 @@
 import {
-  type UpstreamSyncFetchNextReleaseInput,
   type UpstreamSyncGenerateImplementationPromptInput,
+  type UpstreamSyncGetReviewStateInput,
   type UpstreamSyncGetReleaseInput,
   type UpstreamSyncImplementationPromptResult,
   type UpstreamSyncReleaseReport,
+  type UpstreamSyncReviewState,
+  type UpstreamSyncStartNextReleaseReviewInput,
   type UpstreamSyncStatus,
   type UpstreamSyncStatusInput,
   type UpstreamSyncUpdateCandidateInput,
 } from "@samscode/contracts";
 import { Schema, ServiceMap } from "effect";
-import type { Effect } from "effect";
+import type { Effect, Stream } from "effect";
 
 export class UpstreamSyncError extends Schema.TaggedErrorClass<UpstreamSyncError>()(
   "UpstreamSyncError",
@@ -23,9 +25,12 @@ export interface UpstreamSyncShape {
   readonly getStatus: (
     input: UpstreamSyncStatusInput,
   ) => Effect.Effect<UpstreamSyncStatus, UpstreamSyncError>;
-  readonly fetchNextRelease: (
-    input: UpstreamSyncFetchNextReleaseInput,
-  ) => Effect.Effect<UpstreamSyncReleaseReport | null, UpstreamSyncError>;
+  readonly startNextReleaseReview: (
+    input: UpstreamSyncStartNextReleaseReviewInput,
+  ) => Effect.Effect<UpstreamSyncReviewState, UpstreamSyncError>;
+  readonly getReviewState: (
+    input: UpstreamSyncGetReviewStateInput,
+  ) => Effect.Effect<UpstreamSyncReviewState, UpstreamSyncError>;
   readonly getRelease: (
     input: UpstreamSyncGetReleaseInput,
   ) => Effect.Effect<UpstreamSyncReleaseReport, UpstreamSyncError>;
@@ -35,6 +40,7 @@ export interface UpstreamSyncShape {
   readonly generateImplementationPrompt: (
     input: UpstreamSyncGenerateImplementationPromptInput,
   ) => Effect.Effect<UpstreamSyncImplementationPromptResult, UpstreamSyncError>;
+  readonly streamReviewStates: Stream.Stream<UpstreamSyncReviewState>;
 }
 
 export class UpstreamSync extends ServiceMap.Service<UpstreamSync, UpstreamSyncShape>()(

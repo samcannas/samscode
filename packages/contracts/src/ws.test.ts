@@ -85,6 +85,22 @@ it.effect("accepts speech-to-text session start requests", () =>
   }),
 );
 
+it.effect("accepts upstream review start requests", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWebSocketRequest({
+      id: "req-upstream-1",
+      body: {
+        _tag: WS_METHODS.upstreamSyncStartNextReleaseReview,
+        cwd: "/repo",
+        forceRefresh: true,
+        analysisModel: "gpt-5-codex",
+        analysisConcurrency: 4,
+      },
+    });
+    assert.strictEqual(parsed.body._tag, WS_METHODS.upstreamSyncStartNextReleaseReview);
+  }),
+);
+
 it.effect("accepts skills.buildPrompt requests", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeWebSocketRequest({
@@ -187,5 +203,39 @@ it.effect("accepts speech-to-text push envelopes", () =>
     }
 
     assert.strictEqual(parsed.channel, WS_CHANNELS.speechToTextUpdated);
+  }),
+);
+
+it.effect("accepts upstream review push envelopes", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWsResponse({
+      type: "push",
+      sequence: 4,
+      channel: WS_CHANNELS.upstreamSyncReviewUpdated,
+      data: {
+        cwd: "/repo",
+        status: "running",
+        phase: "analyzing",
+        releaseTag: "v0.0.14",
+        previousTag: "v0.0.13",
+        startedAt: "2026-03-30T12:00:00.000Z",
+        updatedAt: "2026-03-30T12:00:05.000Z",
+        completedAt: null,
+        candidateCount: 2,
+        completedCandidateCount: 1,
+        currentCandidateId: "commit-abc123",
+        currentCandidateTitle: "Improve sync handling",
+        currentCandidateIndex: 1,
+        lastProviderProgress: "Inspecting local files",
+        message: "Analyzing candidate 2 of 2.",
+        error: null,
+      },
+    });
+
+    if (!("type" in parsed) || parsed.type !== "push") {
+      assert.fail("expected websocket response to decode as a push envelope");
+    }
+
+    assert.strictEqual(parsed.channel, WS_CHANNELS.upstreamSyncReviewUpdated);
   }),
 );

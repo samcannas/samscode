@@ -1,26 +1,20 @@
 import { Schema } from "effect";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas";
+import { IsoDateTime, NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas";
 import { CodexModelOptions } from "./model";
 import { ProviderStartOptions } from "./orchestration";
 
-export const UPSTREAM_SYNC_SCHEMA_VERSION = 1 as const;
+export const UPSTREAM_SYNC_SCHEMA_VERSION = 2 as const;
 
 export const UpstreamSyncDecision = Schema.Literals([
   "pending",
   "apply",
   "ignore",
-  "defer",
   "already-present",
 ]);
 export type UpstreamSyncDecision = typeof UpstreamSyncDecision.Type;
 
-export const UpstreamSyncTerminalDecision = Schema.Literals([
-  "apply",
-  "ignore",
-  "defer",
-  "already-present",
-]);
+export const UpstreamSyncTerminalDecision = Schema.Literals(["apply", "ignore", "already-present"]);
 export type UpstreamSyncTerminalDecision = typeof UpstreamSyncTerminalDecision.Type;
 
 export const UpstreamSyncCandidateCategory = Schema.Literals([
@@ -96,7 +90,7 @@ export const UpstreamSyncReleaseCandidateIntake = Schema.Struct({
 export type UpstreamSyncReleaseCandidateIntake = typeof UpstreamSyncReleaseCandidateIntake.Type;
 
 export const UpstreamSyncAnalysisRun = Schema.Struct({
-  source: Schema.Literals(["model", "partial-model", "heuristic-fallback"]),
+  source: Schema.Literal("model"),
   model: Schema.NullOr(TrimmedNonEmptyString),
   modelOptions: Schema.optional(CodexModelOptions),
   startedAt: IsoDateTime,
@@ -172,6 +166,52 @@ export const UpstreamSyncReleaseReport = Schema.Struct({
 });
 export type UpstreamSyncReleaseReport = typeof UpstreamSyncReleaseReport.Type;
 
+export const UpstreamSyncReviewPhase = Schema.Literals([
+  "idle",
+  "fetching-upstream",
+  "building-candidates",
+  "analyzing",
+  "persisting",
+  "completed",
+  "failed",
+]);
+export type UpstreamSyncReviewPhase = typeof UpstreamSyncReviewPhase.Type;
+
+export const UpstreamSyncReviewStatus = Schema.Literals(["idle", "running", "completed", "failed"]);
+export type UpstreamSyncReviewStatus = typeof UpstreamSyncReviewStatus.Type;
+
+export const UpstreamSyncActiveCandidate = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  title: Schema.String,
+  index: NonNegativeInt,
+  lastProviderProgress: Schema.NullOr(Schema.String),
+});
+export type UpstreamSyncActiveCandidate = typeof UpstreamSyncActiveCandidate.Type;
+
+export const UpstreamSyncReviewState = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  status: UpstreamSyncReviewStatus,
+  phase: UpstreamSyncReviewPhase,
+  releaseTag: Schema.NullOr(TrimmedNonEmptyString),
+  previousTag: Schema.NullOr(TrimmedNonEmptyString),
+  startedAt: Schema.NullOr(IsoDateTime),
+  updatedAt: IsoDateTime,
+  completedAt: Schema.NullOr(IsoDateTime),
+  candidateCount: Schema.NullOr(Schema.Number),
+  completedCandidateCount: Schema.Number,
+  maxConcurrency: Schema.NullOr(PositiveInt.check(Schema.isLessThanOrEqualTo(8))),
+  runningCandidateCount: NonNegativeInt,
+  queuedCandidateCount: Schema.NullOr(NonNegativeInt),
+  activeCandidates: Schema.Array(UpstreamSyncActiveCandidate),
+  currentCandidateId: Schema.NullOr(TrimmedNonEmptyString),
+  currentCandidateTitle: Schema.NullOr(Schema.String),
+  currentCandidateIndex: Schema.NullOr(Schema.Number),
+  lastProviderProgress: Schema.NullOr(Schema.String),
+  message: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String),
+});
+export type UpstreamSyncReviewState = typeof UpstreamSyncReviewState.Type;
+
 export const UpstreamSyncStatusInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
 });
@@ -191,14 +231,21 @@ export const UpstreamSyncStatus = Schema.Struct({
 });
 export type UpstreamSyncStatus = typeof UpstreamSyncStatus.Type;
 
-export const UpstreamSyncFetchNextReleaseInput = Schema.Struct({
+export const UpstreamSyncGetReviewStateInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type UpstreamSyncGetReviewStateInput = typeof UpstreamSyncGetReviewStateInput.Type;
+
+export const UpstreamSyncStartNextReleaseReviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   forceRefresh: Schema.optional(Schema.Boolean),
   analysisModel: Schema.optional(TrimmedNonEmptyString),
+  analysisConcurrency: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(8))),
   analysisModelOptions: Schema.optional(CodexModelOptions),
   analysisProviderOptions: Schema.optional(ProviderStartOptions),
 });
-export type UpstreamSyncFetchNextReleaseInput = typeof UpstreamSyncFetchNextReleaseInput.Type;
+export type UpstreamSyncStartNextReleaseReviewInput =
+  typeof UpstreamSyncStartNextReleaseReviewInput.Type;
 
 export const UpstreamSyncGetReleaseInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,

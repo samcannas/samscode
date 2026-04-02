@@ -236,6 +236,42 @@ describe("wsNativeApi", () => {
     expect(lateListener).toHaveBeenCalledWith(payload);
   });
 
+  it("delivers and caches upstream review state payloads", async () => {
+    const { createWsNativeApi, onUpstreamSyncReviewStateChanged } = await import("./wsNativeApi");
+
+    createWsNativeApi();
+    const listener = vi.fn();
+    onUpstreamSyncReviewStateChanged(listener);
+
+    const payload = {
+      cwd: "/tmp/workspace",
+      status: "running",
+      phase: "analyzing",
+      releaseTag: "v0.0.14",
+      previousTag: "v0.0.13",
+      startedAt: "2026-03-30T12:00:00.000Z",
+      updatedAt: "2026-03-30T12:00:05.000Z",
+      completedAt: null,
+      candidateCount: 2,
+      completedCandidateCount: 1,
+      currentCandidateId: "commit-1",
+      currentCandidateTitle: "Improve sync flow",
+      currentCandidateIndex: 1,
+      lastProviderProgress: "Inspecting local files",
+      message: "Analyzing candidate 2 of 2.",
+      error: null,
+    } as const;
+    emitPush(WS_CHANNELS.upstreamSyncReviewUpdated, payload);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(payload);
+
+    const lateListener = vi.fn();
+    onUpstreamSyncReviewStateChanged(lateListener);
+    expect(lateListener).toHaveBeenCalledTimes(1);
+    expect(lateListener).toHaveBeenCalledWith(payload);
+  });
+
   it("delivers successive server.configUpdated payloads to active listeners", async () => {
     const { createWsNativeApi, onServerConfigUpdated } = await import("./wsNativeApi");
 
@@ -344,6 +380,89 @@ describe("wsNativeApi", () => {
       relativePath: "plan.md",
       contents: "# Plan\n",
     });
+  });
+
+  it("forwards startNextReleaseReview to the websocket transport once", async () => {
+    requestMock.mockResolvedValue({
+      cwd: "/tmp/project",
+      status: "running",
+      phase: "fetching-upstream",
+      releaseTag: null,
+      previousTag: null,
+      startedAt: "2026-03-30T12:00:00.000Z",
+      updatedAt: "2026-03-30T12:00:00.000Z",
+      completedAt: null,
+      candidateCount: null,
+      completedCandidateCount: 0,
+      maxConcurrency: 4,
+      runningCandidateCount: 0,
+      queuedCandidateCount: null,
+      activeCandidates: [],
+      currentCandidateId: null,
+      currentCandidateTitle: null,
+      currentCandidateIndex: null,
+      lastProviderProgress: null,
+      message: "Checking for the next upstream release.",
+      error: null,
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.upstreamSync.startNextReleaseReview({
+      cwd: "/tmp/project",
+      forceRefresh: true,
+      analysisModel: "gpt-5.4",
+      analysisModelOptions: { reasoningEffort: "high" },
+    });
+
+    expect(requestMock).toHaveBeenCalledTimes(1);
+    expect(requestMock).toHaveBeenCalledWith(WS_METHODS.upstreamSyncStartNextReleaseReview, {
+      cwd: "/tmp/project",
+      forceRefresh: true,
+      analysisModel: "gpt-5.4",
+      analysisModelOptions: { reasoningEffort: "high" },
+    });
+  });
+
+  it("extends the upstream release request timeout to ten minutes", async () => {
+    requestMock.mockResolvedValue({
+      tag: "v0.0.15",
+      name: "v0.0.15",
+      url: "https://example.com/releases/v0.0.15",
+      publishedAt: null,
+      previousTag: "v0.0.14",
+      compareUrl: null,
+      fetchedAt: "2026-03-30T12:00:00.000Z",
+      releaseNotes: "",
+      analysis: {
+        source: "model",
+        model: "gpt-5.4",
+        startedAt: "2026-03-30T12:00:00.000Z",
+        completedAt: "2026-03-30T12:00:05.000Z",
+        durationMs: 5000,
+        modeledCandidateCount: 1,
+        heuristicCandidateCount: 0,
+        notes: [],
+      },
+      candidates: [],
+      triagedAt: null,
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.upstreamSync.getRelease({
+      cwd: "/tmp/project",
+      tag: "v0.0.15",
+    });
+
+    expect(requestMock).toHaveBeenCalledWith(
+      WS_METHODS.upstreamSyncGetRelease,
+      {
+        cwd: "/tmp/project",
+        tag: "v0.0.15",
+      },
+      { timeoutMs: 600_000 },
+    );
   });
 
   it("forwards speech-to-text methods to the websocket transport", async () => {

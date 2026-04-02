@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "tag": "v0.0.15",
+  "updatedAt": "2026-03-30T15:31:44.007Z",
+  "decisions": [
+    {
+      "candidateId": "commit-d2e6c8270923",
+      "decision": "already-present",
+      "note": null
+    },
+    {
+      "candidateId": "commit-5513845fd56a",
+      "decision": "already-present",
+      "note": null
+    }
+  ]
+}

@@ -564,6 +564,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   yield* Stream.runForEach(speechToText.streamSessionEvents, (event) =>
     pushBus.publishAll(WS_CHANNELS.speechToTextSessionEvent, event),
   ).pipe(Effect.forkIn(subscriptionsScope));
+  yield* Stream.runForEach(upstreamSync.streamReviewStates, (state) =>
+    pushBus.publishAll(WS_CHANNELS.upstreamSyncReviewUpdated, state),
+  ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
   yield* readiness.markOrchestrationSubscriptionsReady;
@@ -651,6 +654,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   );
 
   const routeRequest = Effect.fnUntraced(function* (request: WebSocketRequest) {
+    if (request.body._tag.startsWith("upstreamSync.")) {
+      logger.info("routing upstream sync request", {
+        id: request.id,
+        method: request.body._tag,
+      });
+    }
     switch (request.body._tag) {
       case ORCHESTRATION_WS_METHODS.getSnapshot:
         return yield* projectionReadModelQuery.getSnapshot();
@@ -997,9 +1006,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return yield* upstreamSync.getStatus(body);
       }
 
-      case WS_METHODS.upstreamSyncFetchNextRelease: {
+      case WS_METHODS.upstreamSyncStartNextReleaseReview: {
         const body = stripRequestTag(request.body);
-        return yield* upstreamSync.fetchNextRelease(body);
+        return yield* upstreamSync.startNextReleaseReview(body);
+      }
+
+      case WS_METHODS.upstreamSyncGetReviewState: {
+        const body = stripRequestTag(request.body);
+        return yield* upstreamSync.getReviewState(body);
       }
 
       case WS_METHODS.upstreamSyncGetRelease: {
@@ -1049,11 +1063,32 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       });
     }
 
+    if (request.success.body._tag.startsWith("upstreamSync.")) {
+      logger.info("received upstream sync websocket request", {
+        id: request.success.id,
+        method: request.success.body._tag,
+      });
+    }
+
     const result = yield* Effect.exit(routeRequest(request.success));
     if (Exit.isFailure(result)) {
+      if (request.success.body._tag.startsWith("upstreamSync.")) {
+        logger.warn("upstream sync websocket request failed", {
+          id: request.success.id,
+          method: request.success.body._tag,
+          error: Cause.pretty(result.cause),
+        });
+      }
       return yield* sendWsResponse({
         id: request.success.id,
         error: { message: Cause.pretty(result.cause) },
+      });
+    }
+
+    if (request.success.body._tag.startsWith("upstreamSync.")) {
+      logger.info("upstream sync websocket request completed", {
+        id: request.success.id,
+        method: request.success.body._tag,
       });
     }
 
