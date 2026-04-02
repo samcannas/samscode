@@ -3,6 +3,7 @@ import type { ThreadId } from "@samscode/contracts";
 interface TerminalRetentionThread {
   id: ThreadId;
   deletedAt: string | null;
+  archivedAt?: string | null;
 }
 
 interface CollectActiveTerminalThreadIdsInput {

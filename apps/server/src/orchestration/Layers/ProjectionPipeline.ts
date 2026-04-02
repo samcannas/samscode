@@ -413,9 +413,40 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
             latestTurnId: null,
             createdAt: event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
+            archivedAt: null,
             deletedAt: null,
           });
           return;
+
+        case "thread.archived": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            archivedAt: event.payload.archivedAt,
+            updatedAt: event.payload.archivedAt,
+          });
+          return;
+        }
+
+        case "thread.unarchived": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            archivedAt: null,
+            updatedAt: event.payload.unarchivedAt,
+          });
+          return;
+        }
 
         case "thread.meta-updated": {
           const existingRow = yield* projectionThreadRepository.getById({

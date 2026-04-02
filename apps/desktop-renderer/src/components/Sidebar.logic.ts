@@ -266,7 +266,10 @@ export function getVisibleThreadsForProject(input: {
 }
 
 export function getFallbackThreadIdAfterDelete<
-  T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt" | "messages">,
+  T extends Pick<
+    Thread,
+    "id" | "projectId" | "createdAt" | "updatedAt" | "messages" | "archivedAt"
+  >,
 >(input: {
   threads: readonly T[];
   deletedThreadId: T["id"];
@@ -281,7 +284,10 @@ export function getFallbackThreadIdAfterDelete<
   const deletedThreadIds = input.deletedThreadIds ?? new Set<T["id"]>([input.deletedThreadId]);
   const remainingProjectThreads = sortThreadsForSidebar(
     input.threads.filter(
-      (thread) => thread.projectId === deletedThread.projectId && !deletedThreadIds.has(thread.id),
+      (thread) =>
+        thread.projectId === deletedThread.projectId &&
+        thread.archivedAt === null &&
+        !deletedThreadIds.has(thread.id),
     ),
     input.sortOrder,
   );

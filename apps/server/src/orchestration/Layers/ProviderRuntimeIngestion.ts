@@ -95,10 +95,6 @@ function proposedPlanIdFromEvent(event: ProviderRuntimeEvent, threadId: ThreadId
   return `plan:${threadId}:event:${event.eventId}`;
 }
 
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
 function buildContextWindowActivityPayload(
   event: ProviderRuntimeEvent,
 ): ThreadTokenUsageSnapshot | undefined {
@@ -106,14 +102,6 @@ function buildContextWindowActivityPayload(
     return undefined;
   }
   return event.payload.usage;
-}
-
-function runtimePayloadRecord(event: ProviderRuntimeEvent): Record<string, unknown> | undefined {
-  const payload = (event as { payload?: unknown }).payload;
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-  return payload as Record<string, unknown>;
 }
 
 function normalizeRuntimeTurnState(
@@ -131,20 +119,21 @@ function normalizeRuntimeTurnState(
 }
 
 function runtimeTurnState(
-  event: ProviderRuntimeEvent,
+  event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>,
 ): "completed" | "failed" | "interrupted" | "cancelled" {
-  const payloadState = asString(runtimePayloadRecord(event)?.state);
-  return normalizeRuntimeTurnState(payloadState);
+  return normalizeRuntimeTurnState(event.payload.state);
 }
 
-function runtimeTurnErrorMessage(event: ProviderRuntimeEvent): string | undefined {
-  const payloadErrorMessage = asString(runtimePayloadRecord(event)?.errorMessage);
-  return payloadErrorMessage;
+function runtimeTurnErrorMessage(
+  event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>,
+): string | undefined {
+  return event.payload.errorMessage;
 }
 
-function runtimeErrorMessageFromEvent(event: ProviderRuntimeEvent): string | undefined {
-  const payloadMessage = asString(runtimePayloadRecord(event)?.message);
-  return payloadMessage;
+function runtimeErrorMessageFromEvent(
+  event: Extract<ProviderRuntimeEvent, { type: "runtime.error" }>,
+): string | undefined {
+  return event.payload.message;
 }
 
 function orchestrationSessionStatusFromRuntimeState(

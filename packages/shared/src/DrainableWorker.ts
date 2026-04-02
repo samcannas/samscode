@@ -3,8 +3,8 @@
  *
  * Wraps the common `Queue.unbounded` + `Effect.forever` pattern and adds
  * a signal that resolves when the queue is empty **and** the current item
- * has finished processing. This lets tests replace timing-sensitive
- * `Effect.sleep` calls with deterministic `drain()`.
+ * has finished processing. Drain re-checks state after every idle wait so
+ * enqueue / completion races cannot resolve a stale idle signal.
  *
  * @module DrainableWorker
  */
@@ -93,9 +93,25 @@ export const makeDrainableWorker = <A, E, R>(
         }
       });
 
-    const drain: DrainableWorker<A>["drain"] = Ref.get(state).pipe(
-      Effect.flatMap(({ idle }) => Deferred.await(idle)),
-    );
+    const drainUntilIdle = (): Effect.Effect<void> =>
+      Ref.get(state).pipe(
+        Effect.flatMap(({ idle, outstanding }) => {
+          if (outstanding === 0) {
+            return Effect.void;
+          }
+          return Deferred.await(idle).pipe(
+            Effect.flatMap(() =>
+              Ref.get(state).pipe(
+                Effect.flatMap((current) =>
+                  current.outstanding === 0 ? Effect.void : drainUntilIdle(),
+                ),
+              ),
+            ),
+          );
+        }),
+      );
+
+    const drain: DrainableWorker<A>["drain"] = drainUntilIdle();
 
     return { enqueue, drain } satisfies DrainableWorker<A>;
   });

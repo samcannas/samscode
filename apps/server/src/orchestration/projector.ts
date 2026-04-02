@@ -14,6 +14,7 @@ import {
   ProjectDeletedPayload,
   ProjectMetaUpdatedPayload,
   ThreadActivityAppendedPayload,
+  ThreadArchivedPayload,
   ThreadCreatedPayload,
   ThreadDeletedPayload,
   ThreadInteractionModeSetPayload,
@@ -22,6 +23,7 @@ import {
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
+  ThreadUnarchivedPayload,
 } from "./Schemas.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
@@ -258,10 +260,12 @@ export function projectEvent(
             latestTurn: null,
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
+            archivedAt: null,
             deletedAt: null,
             messages: [],
             activities: [],
             checkpoints: [],
+            proposedPlans: [],
             session: null,
           },
           event.type,
@@ -275,6 +279,28 @@ export function projectEvent(
             : [...nextBase.threads, thread],
         };
       });
+
+    case "thread.archived":
+      return decodeForEvent(ThreadArchivedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            archivedAt: payload.archivedAt,
+            updatedAt: payload.archivedAt,
+          }),
+        })),
+      );
+
+    case "thread.unarchived":
+      return decodeForEvent(ThreadUnarchivedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            archivedAt: null,
+            updatedAt: payload.unarchivedAt,
+          }),
+        })),
+      );
 
     case "thread.deleted":
       return decodeForEvent(ThreadDeletedPayload, event.payload, event.type, "payload").pipe(

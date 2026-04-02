@@ -407,6 +407,7 @@ export default function Sidebar() {
       }
     },
     [
+      appSettings.sidebarThreadSortOrder,
       clearComposerDraftForThread,
       clearProjectDraftThreadById,
       clearTerminalState,
@@ -416,6 +417,75 @@ export default function Sidebar() {
       routeThreadId,
       threads,
     ],
+  );
+
+  const archiveThread = useCallback(
+    async (threadId: ThreadId): Promise<void> => {
+      const api = readNativeApi();
+      if (!api) return;
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread || thread.archivedAt !== null) return;
+
+      if (thread.session && thread.session.status !== "closed") {
+        await api.orchestration
+          .dispatchCommand({
+            type: "thread.session.stop",
+            commandId: newCommandId(),
+            threadId,
+            createdAt: new Date().toISOString(),
+          })
+          .catch(() => undefined);
+      }
+
+      try {
+        await api.terminal.close({ threadId, deleteHistory: false });
+      } catch {
+        // Terminal may already be closed
+      }
+
+      const shouldNavigateToFallback = routeThreadId === threadId;
+      const fallbackThreadId = getFallbackThreadIdAfterDelete({
+        threads,
+        deletedThreadId: threadId,
+        sortOrder: appSettings.sidebarThreadSortOrder,
+      });
+
+      await api.orchestration.dispatchCommand({
+        type: "thread.archive",
+        commandId: newCommandId(),
+        threadId,
+      });
+
+      clearTerminalState(threadId);
+      if (shouldNavigateToFallback) {
+        if (fallbackThreadId) {
+          void navigate({
+            to: "/$threadId",
+            params: { threadId: fallbackThreadId },
+            replace: true,
+          });
+        } else {
+          void navigate({ to: "/", replace: true });
+        }
+      }
+    },
+    [appSettings.sidebarThreadSortOrder, clearTerminalState, navigate, routeThreadId, threads],
+  );
+
+  const unarchiveThread = useCallback(
+    async (threadId: ThreadId): Promise<void> => {
+      const api = readNativeApi();
+      if (!api) return;
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread || thread.archivedAt === null) return;
+
+      await api.orchestration.dispatchCommand({
+        type: "thread.unarchive",
+        commandId: newCommandId(),
+        threadId,
+      });
+    },
+    [threads],
   );
 
   const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{ threadId: ThreadId }>({
@@ -459,13 +529,22 @@ export default function Sidebar() {
       const threadWorkspacePath =
         thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
       const clicked = await api.contextMenu.show(
-        [
-          { id: "rename", label: "Rename thread" },
-          { id: "mark-unread", label: "Mark unread" },
-          { id: "copy-path", label: "Copy Path" },
-          { id: "copy-thread-id", label: "Copy Thread ID" },
-          { id: "delete", label: "Delete", destructive: true },
-        ],
+        thread.archivedAt === null
+          ? [
+              { id: "rename", label: "Rename thread" },
+              { id: "mark-unread", label: "Mark unread" },
+              { id: "archive", label: "Archive" },
+              { id: "copy-path", label: "Copy Path" },
+              { id: "copy-thread-id", label: "Copy Thread ID" },
+              { id: "delete", label: "Delete", destructive: true },
+            ]
+          : [
+              { id: "rename", label: "Rename thread" },
+              { id: "unarchive", label: "Unarchive" },
+              { id: "copy-path", label: "Copy Path" },
+              { id: "copy-thread-id", label: "Copy Thread ID" },
+              { id: "delete", label: "Delete", destructive: true },
+            ],
         position,
       );
 
@@ -478,6 +557,14 @@ export default function Sidebar() {
 
       if (clicked === "mark-unread") {
         markThreadUnread(threadId);
+        return;
+      }
+      if (clicked === "archive") {
+        await archiveThread(threadId);
+        return;
+      }
+      if (clicked === "unarchive") {
+        await unarchiveThread(threadId);
         return;
       }
       if (clicked === "copy-path") {
@@ -512,12 +599,14 @@ export default function Sidebar() {
     },
     [
       appSettings.confirmThreadDelete,
+      archiveThread,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
       markThreadUnread,
       projectCwdById,
       threads,
+      unarchiveThread,
     ],
   );
 
@@ -530,10 +619,16 @@ export default function Sidebar() {
       const count = ids.length;
 
       const clicked = await api.contextMenu.show(
-        [
-          { id: "mark-unread", label: `Mark unread (${count})` },
-          { id: "delete", label: `Delete (${count})`, destructive: true },
-        ],
+        ids.every((id) => threads.find((thread) => thread.id === id)?.archivedAt !== null)
+          ? [
+              { id: "unarchive", label: `Unarchive (${count})` },
+              { id: "delete", label: `Delete (${count})`, destructive: true },
+            ]
+          : [
+              { id: "mark-unread", label: `Mark unread (${count})` },
+              { id: "archive", label: `Archive (${count})` },
+              { id: "delete", label: `Delete (${count})`, destructive: true },
+            ],
         position,
       );
 
@@ -542,6 +637,22 @@ export default function Sidebar() {
           markThreadUnread(id);
         }
         clearSelection();
+        return;
+      }
+
+      if (clicked === "archive") {
+        for (const id of ids) {
+          await archiveThread(id);
+        }
+        removeFromSelection(ids);
+        return;
+      }
+
+      if (clicked === "unarchive") {
+        for (const id of ids) {
+          await unarchiveThread(id);
+        }
+        removeFromSelection(ids);
         return;
       }
 
@@ -566,10 +677,13 @@ export default function Sidebar() {
     [
       appSettings.confirmThreadDelete,
       clearSelection,
+      archiveThread,
       deleteThread,
       markThreadUnread,
       removeFromSelection,
       selectedThreadIds,
+      threads,
+      unarchiveThread,
     ],
   );
 
@@ -751,7 +865,18 @@ export default function Sidebar() {
   const activeProjectThreads = useMemo(() => {
     if (!activeProject) return [];
     return sortThreadsForSidebar(
-      threads.filter((thread) => thread.projectId === activeProject.id),
+      threads.filter(
+        (thread) => thread.projectId === activeProject.id && thread.archivedAt === null,
+      ),
+      appSettings.sidebarThreadSortOrder,
+    );
+  }, [activeProject, threads, appSettings.sidebarThreadSortOrder]);
+  const activeProjectArchivedThreads = useMemo(() => {
+    if (!activeProject) return [];
+    return sortThreadsForSidebar(
+      threads.filter(
+        (thread) => thread.projectId === activeProject.id && thread.archivedAt !== null,
+      ),
       appSettings.sidebarThreadSortOrder,
     );
   }, [activeProject, threads, appSettings.sidebarThreadSortOrder]);
@@ -1029,11 +1154,91 @@ export default function Sidebar() {
               </SidebarMenuItem>
             )}
 
-            {activeProjectThreads.length === 0 && (
+            {activeProjectThreads.length === 0 && activeProjectArchivedThreads.length === 0 && (
               <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
                 No sessions yet
               </div>
             )}
+
+            {activeProjectArchivedThreads.length > 0 && (
+              <div className="px-2 pt-4 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
+                Archived
+              </div>
+            )}
+            {activeProjectArchivedThreads.map((thread) => {
+              const isActive = routeThreadId === thread.id;
+              const isSelected = selectedThreadIds.has(thread.id);
+              const isHighlighted = isActive || isSelected;
+
+              return (
+                <SidebarMenuItem key={thread.id} data-thread-item>
+                  <SidebarMenuButton
+                    render={<div role="button" tabIndex={0} />}
+                    size="sm"
+                    isActive={isActive}
+                    className={resolveThreadRowClassName({
+                      isActive,
+                      isSelected,
+                    })}
+                    onClick={(event) => {
+                      handleThreadClick(
+                        event,
+                        thread.id,
+                        activeProjectArchivedThreads.map((entry) => entry.id),
+                      );
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      if (selectedThreadIds.size > 0) {
+                        clearSelection();
+                      }
+                      setSelectionAnchor(thread.id);
+                      void navigate({
+                        to: "/$threadId",
+                        params: { threadId: thread.id },
+                      });
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if (selectedThreadIds.size > 0 && selectedThreadIds.has(thread.id)) {
+                        void handleMultiSelectContextMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      } else {
+                        if (selectedThreadIds.size > 0) {
+                          clearSelection();
+                        }
+                        void handleThreadContextMenu(thread.id, {
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60">
+                        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                        <span className="hidden md:inline">Archived</span>
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      <span
+                        className={`text-[10px] ${
+                          isHighlighted
+                            ? "text-foreground/72 dark:text-foreground/82"
+                            : "text-muted-foreground/40"
+                        }`}
+                      >
+                        {formatRelativeTime(thread.updatedAt ?? thread.createdAt)}
+                      </span>
+                    </div>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

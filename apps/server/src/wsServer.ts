@@ -281,6 +281,10 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   );
 
   const providerStatuses = yield* providerHealth.getStatuses;
+  const runtimeServices = yield* Effect.services<
+    ServerRuntimeServices | ServerConfig | FileSystem.FileSystem | Path.Path
+  >();
+  const runPromise = Effect.runPromiseWith(runtimeServices);
 
   const clients = yield* Ref.make(new Set<WebSocket>());
   const logger = createLogger("ws");
@@ -438,7 +442,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       res.end(body);
     };
 
-    void Effect.runPromise(
+    void runPromise(
       Effect.gen(function* () {
         const url = new URL(req.url ?? "/", `http://localhost:${port}`);
         if (tryHandleProjectFaviconRequest(url, res)) {
@@ -603,7 +607,10 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       }
 
       const existingThread = snapshot.threads.find(
-        (thread) => thread.projectId === bootstrapProjectId && thread.deletedAt === null,
+        (thread) =>
+          thread.projectId === bootstrapProjectId &&
+          thread.deletedAt === null &&
+          thread.archivedAt === null,
       );
       if (!existingThread) {
         const createdAt = new Date().toISOString();
@@ -633,13 +640,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     );
   }
 
-  const runtimeServices = yield* Effect.services<
-    ServerRuntimeServices | ServerConfig | FileSystem.FileSystem | Path.Path
-  >();
-  const runPromise = Effect.runPromiseWith(runtimeServices);
-
   const unsubscribeTerminalEvents = yield* terminalManager.subscribe(
-    (event) => void Effect.runPromise(pushBus.publishAll(WS_CHANNELS.terminalEvent, event)),
+    (event) => void runPromise(pushBus.publishAll(WS_CHANNELS.terminalEvent, event)),
   );
   yield* Effect.addFinalizer(() => Effect.sync(() => unsubscribeTerminalEvents()));
   yield* readiness.markTerminalSubscriptionsReady;
