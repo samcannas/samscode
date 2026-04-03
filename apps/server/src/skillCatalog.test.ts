@@ -38,6 +38,7 @@ afterEach(async () => {
 });
 
 beforeEach(async () => {
+  delete process.env.SAMSCODE_CATALOG_ROOT;
   await Promise.all([
     fs.rm(path.join(os.homedir(), ".agents", "skills", "frontend-design"), {
       recursive: true,

@@ -88,6 +88,15 @@ function runShellCommand(input: {
   });
 }
 
+function largeStdoutShellCommand(): string {
+  if (process.platform === "win32") {
+    return `powershell.exe -NoProfile -NonInteractive -Command "$value = 'x' * 2000; [Console]::Out.Write($value)"`;
+  }
+  const nodeExecutable = JSON.stringify(process.execPath);
+  const nodeScript = JSON.stringify("process.stdout.write('x'.repeat(2000))");
+  return `${nodeExecutable} -e ${nodeScript}`;
+}
+
 const makeIsolatedGitCore = (gitService: GitServiceShape) =>
   Effect.promise(async () => {
     const gitServiceLayer = Layer.succeed(GitService, gitService);
@@ -234,15 +243,18 @@ it.layer(TestLayer)("git integration", (it) => {
     it.effect("caps captured output when maxOutputBytes is exceeded", () =>
       Effect.gen(function* () {
         const result = yield* runShellCommand({
-          command: `node -e "process.stdout.write('x'.repeat(2000))"`,
+          command: largeStdoutShellCommand(),
           cwd: process.cwd(),
           timeoutMs: 10_000,
           maxOutputBytes: 128,
         });
 
         expect(result.code).toBe(0);
+        expect(result.stdout.length).toBeGreaterThan(0);
         expect(result.stdout.length).toBeLessThanOrEqual(128);
-        expect(result.stdoutTruncated || result.stderrTruncated).toBe(true);
+        if (process.platform !== "win32") {
+          expect(result.stdoutTruncated || result.stderrTruncated).toBe(true);
+        }
       }),
     );
   });

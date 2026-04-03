@@ -658,22 +658,22 @@ const makeGitCore = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* refreshStatusUpstreamIfStale(cwd).pipe(Effect.ignoreCause({ log: true }));
 
-      const [statusStdout, unstagedNumstatStdout, stagedNumstatStdout] = yield* Effect.all(
-        [
-          runGitStdout("GitCore.statusDetails.status", cwd, [
-            "status",
-            "--porcelain=2",
-            "--branch",
-          ]),
-          runGitStdout("GitCore.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
-          runGitStdout("GitCore.statusDetails.stagedNumstat", cwd, [
-            "diff",
-            "--cached",
-            "--numstat",
-          ]),
-        ],
-        { concurrency: "unbounded" },
+      // Run these sequentially to avoid transient index lock/contention issues on Windows.
+      const statusStdout = yield* runGitStdout("GitCore.statusDetails.status", cwd, [
+        "status",
+        "--porcelain=2",
+        "--branch",
+      ]);
+      const unstagedNumstatStdout = yield* runGitStdout(
+        "GitCore.statusDetails.unstagedNumstat",
+        cwd,
+        ["diff", "--numstat"],
       );
+      const stagedNumstatStdout = yield* runGitStdout("GitCore.statusDetails.stagedNumstat", cwd, [
+        "diff",
+        "--cached",
+        "--numstat",
+      ]);
 
       let branch: string | null = null;
       let upstreamRef: string | null = null;

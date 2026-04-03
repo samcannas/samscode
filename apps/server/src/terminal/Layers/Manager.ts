@@ -53,27 +53,74 @@ function defaultShellResolver(): string {
   return process.env.SHELL ?? "bash";
 }
 
-function normalizeShellCommand(value: string | undefined): string | null {
+function tokenizeShellCommand(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (!character) continue;
+
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+
+    if (/\s/.test(character)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += character;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function normalizeShellCommand(
+  value: string | undefined,
+): { shell: string; args?: string[] } | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;
 
-  if (process.platform === "win32") {
-    return trimmed;
-  }
-
-  const firstToken = trimmed.split(/\s+/g)[0]?.trim();
-  if (!firstToken) return null;
-  return firstToken.replace(/^['"]|['"]$/g, "");
+  const tokens = tokenizeShellCommand(trimmed);
+  const [shell, ...args] = tokens;
+  if (!shell || shell.length === 0) return null;
+  return args.length > 0 ? { shell, args } : { shell };
 }
 
-function shellCandidateFromCommand(command: string | null): ShellCandidate | null {
-  if (!command || command.length === 0) return null;
-  const shellName = path.basename(command).toLowerCase();
+function shellCandidateFromCommand(
+  command: { shell: string; args?: string[] } | null,
+): ShellCandidate | null {
+  if (!command || command.shell.length === 0) return null;
+  const shellName = path.basename(command.shell).toLowerCase();
   if (process.platform !== "win32" && shellName === "zsh") {
-    return { shell: command, args: ["-o", "nopromptsp"] };
+    return {
+      shell: command.shell,
+      args: [...(command.args ?? []), "-o", "nopromptsp"],
+    };
   }
-  return { shell: command };
+  return command.args
+    ? { shell: command.shell, args: [...command.args] }
+    : { shell: command.shell };
 }
 
 function formatShellCandidate(candidate: ShellCandidate): string {
@@ -100,21 +147,21 @@ function resolveShellCandidates(shellResolver: () => string): ShellCandidate[] {
   if (process.platform === "win32") {
     return uniqueShellCandidates([
       requested,
-      shellCandidateFromCommand(process.env.ComSpec ?? null),
-      shellCandidateFromCommand("powershell.exe"),
-      shellCandidateFromCommand("cmd.exe"),
+      shellCandidateFromCommand(normalizeShellCommand(process.env.ComSpec)),
+      shellCandidateFromCommand(normalizeShellCommand("powershell.exe")),
+      shellCandidateFromCommand(normalizeShellCommand("cmd.exe")),
     ]);
   }
 
   return uniqueShellCandidates([
     requested,
     shellCandidateFromCommand(normalizeShellCommand(process.env.SHELL)),
-    shellCandidateFromCommand("/bin/zsh"),
-    shellCandidateFromCommand("/bin/bash"),
-    shellCandidateFromCommand("/bin/sh"),
-    shellCandidateFromCommand("zsh"),
-    shellCandidateFromCommand("bash"),
-    shellCandidateFromCommand("sh"),
+    shellCandidateFromCommand(normalizeShellCommand("/bin/zsh")),
+    shellCandidateFromCommand(normalizeShellCommand("/bin/bash")),
+    shellCandidateFromCommand(normalizeShellCommand("/bin/sh")),
+    shellCandidateFromCommand(normalizeShellCommand("zsh")),
+    shellCandidateFromCommand(normalizeShellCommand("bash")),
+    shellCandidateFromCommand(normalizeShellCommand("sh")),
   ]);
 }
 
