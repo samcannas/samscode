@@ -51,7 +51,7 @@ describe("extractTerminalLinks", () => {
         kind: "path",
         text: "C:/Users/sam/project/src/main.ts:12",
         start: 4,
-        end: 37,
+        end: 39,
       },
     ]);
   });

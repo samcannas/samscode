@@ -223,6 +223,17 @@ it.effect("accepts upstream review push envelopes", () =>
         completedAt: null,
         candidateCount: 2,
         completedCandidateCount: 1,
+        maxConcurrency: 4,
+        runningCandidateCount: 1,
+        queuedCandidateCount: 0,
+        activeCandidates: [
+          {
+            id: "commit-abc123",
+            title: "Improve sync handling",
+            index: 1,
+            lastProviderProgress: "Inspecting local files",
+          },
+        ],
         currentCandidateId: "commit-abc123",
         currentCandidateTitle: "Improve sync handling",
         currentCandidateIndex: 1,

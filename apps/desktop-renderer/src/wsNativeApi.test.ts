@@ -254,6 +254,17 @@ describe("wsNativeApi", () => {
       completedAt: null,
       candidateCount: 2,
       completedCandidateCount: 1,
+      maxConcurrency: 4,
+      runningCandidateCount: 1,
+      queuedCandidateCount: 0,
+      activeCandidates: [
+        {
+          id: "commit-1",
+          title: "Improve sync flow",
+          index: 1,
+          lastProviderProgress: "Inspecting local files",
+        },
+      ],
       currentCandidateId: "commit-1",
       currentCandidateTitle: "Improve sync flow",
       currentCandidateIndex: 1,
