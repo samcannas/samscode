@@ -14,7 +14,7 @@
     },
     "apps/cli": {
       "name": "samscode",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "bin": {
         "samscode": "./dist/index.mjs",
       },
@@ -27,7 +27,7 @@
     },
     "apps/desktop": {
       "name": "@samscode/desktop",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "effect": "catalog:",
         "electron": "40.6.0",
@@ -45,7 +45,7 @@
     },
     "apps/desktop-renderer": {
       "name": "@samscode/desktop-renderer",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "@base-ui/react": "^1.2.0",
         "@dnd-kit/core": "^6.3.1",
@@ -91,7 +91,7 @@
     },
     "apps/server": {
       "name": "@samscode/server",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.2.77",
         "@effect/platform-node": "catalog:",
@@ -116,7 +116,7 @@
     },
     "packages/contracts": {
       "name": "@samscode/contracts",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "effect": "catalog:",
       },
