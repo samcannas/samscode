@@ -3,7 +3,14 @@ import type { ProviderKind } from "./orchestration";
 
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
 export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORT_OPTIONS)[number];
-export const CLAUDE_CODE_EFFORT_OPTIONS = ["low", "medium", "high", "max", "ultrathink"] as const;
+export const CLAUDE_CODE_EFFORT_OPTIONS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultrathink",
+] as const;
 export type ClaudeCodeEffort = (typeof CLAUDE_CODE_EFFORT_OPTIONS)[number];
 export const CLAUDE_CONTEXT_WINDOW_OPTIONS = ["200k", "1m"] as const;
 export type ClaudeContextWindow = (typeof CLAUDE_CONTEXT_WINDOW_OPTIONS)[number];
@@ -44,6 +51,7 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-5.2", name: "GPT-5.2" },
   ],
   claudeAgent: [
+    { slug: "claude-opus-4-7", name: "Claude Opus 4.7" },
     { slug: "claude-opus-4-6", name: "Claude Opus 4.6" },
     { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
     { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
@@ -74,6 +82,10 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "gpt-5.3-spark": "gpt-5.3-codex-spark",
   },
   claudeAgent: {
+    "opus-4.7": "claude-opus-4-7",
+    "claude-opus-4.7": "claude-opus-4-7",
+    "claude-opus-4-7": "claude-opus-4-7",
+    "claude-opus-4-7-20260407": "claude-opus-4-7",
     opus: "claude-opus-4-6",
     "opus-4.6": "claude-opus-4-6",
     "claude-opus-4.6": "claude-opus-4-6",

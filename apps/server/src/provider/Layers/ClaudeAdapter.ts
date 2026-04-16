@@ -2555,6 +2555,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             ? input.modelOptions.claudeAgent.thinking
             : undefined;
         const effectiveEffort = getEffectiveClaudeCodeEffort(effort);
+        // The SDK runtime forwards `--effort` verbatim to the external `claude`
+        // binary, but v0.2.77's TypeScript surface predates Opus 4.7 and does
+        // not include the new `xhigh` literal yet.
+        const sdkEffort = effectiveEffort as ClaudeQueryOptions["effort"] | undefined;
         const permissionMode =
           toPermissionMode(providerOptions?.permissionMode) ?? "bypassPermissions";
         const settings = {
@@ -2567,7 +2571,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ...(input.model ? { model: input.model } : {}),
           pathToClaudeCodeExecutable: providerOptions?.binaryPath ?? "claude",
           settingSources: [...CLAUDE_SETTING_SOURCES],
-          ...(effectiveEffort ? { effort: effectiveEffort } : {}),
+          ...(sdkEffort ? { effort: sdkEffort } : {}),
           ...(permissionMode ? { permissionMode } : {}),
           ...(permissionMode === "bypassPermissions"
             ? { allowDangerouslySkipPermissions: true }

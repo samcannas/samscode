@@ -89,6 +89,22 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
   });
 
+  it("accepts claude provider effort options including xhigh", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      model: "claude-opus-4-7",
+      modelOptions: {
+        claudeAgent: {
+          effort: "xhigh",
+          fastMode: true,
+        },
+      },
+    });
+
+    expect(parsed.modelOptions?.claudeAgent?.effort).toBe("xhigh");
+    expect(parsed.modelOptions?.claudeAgent?.fastMode).toBe(true);
+  });
+
   it("accepts claude provider effort options including ultrathink", () => {
     const parsed = decodeProviderSendTurnInput({
       threadId: "thread-1",

@@ -35,6 +35,7 @@ const CLAUDE_EFFORT_LABELS: Record<ClaudeCodeEffort, string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
+  xhigh: "Extra High",
   max: "Max",
   ultrathink: "Ultrathink",
 };

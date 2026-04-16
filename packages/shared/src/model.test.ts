@@ -29,6 +29,7 @@ import {
   supportsClaudeMaxEffort,
   supportsClaudeThinkingToggle,
   supportsClaudeUltrathinkKeyword,
+  supportsClaudeXHighEffort,
 } from "./model";
 
 describe("normalizeModelSlug", () => {
@@ -56,6 +57,7 @@ describe("normalizeModelSlug", () => {
 
   it("uses provider-specific aliases", () => {
     expect(normalizeModelSlug("sonnet", "claudeAgent")).toBe("claude-sonnet-4-6");
+    expect(normalizeModelSlug("opus-4.7", "claudeAgent")).toBe("claude-opus-4-7");
     expect(normalizeModelSlug("opus-4.6", "claudeAgent")).toBe("claude-opus-4-6");
     expect(normalizeModelSlug("claude-haiku-4-5-20251001", "claudeAgent")).toBe("claude-haiku-4-5");
   });
@@ -117,6 +119,7 @@ describe("resolveSelectableModel", () => {
   it("resolves provider-specific aliases after normalization", () => {
     expect(
       resolveSelectableModel("claudeAgent", "sonnet", [
+        { slug: "claude-opus-4-7", name: "Claude Opus 4.7" },
         { slug: "claude-opus-4-6", name: "Claude Opus 4.6" },
         { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
       ]),
@@ -162,6 +165,17 @@ describe("resolveSelectableModel", () => {
 describe("getReasoningEffortOptions", () => {
   it("returns codex reasoning options for codex", () => {
     expect(getReasoningEffortOptions("codex")).toEqual(REASONING_EFFORT_OPTIONS_BY_PROVIDER.codex);
+  });
+
+  it("returns claude effort options for Opus 4.7", () => {
+    expect(getReasoningEffortOptions("claudeAgent", "claude-opus-4-7")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultrathink",
+    ]);
   });
 
   it("returns claude effort options for Opus 4.6", () => {
@@ -217,12 +231,13 @@ describe("getDefaultReasoningEffort", () => {
 describe("resolveReasoningEffortForProvider", () => {
   it("accepts provider-scoped effort values", () => {
     expect(resolveReasoningEffortForProvider("codex", "xhigh")).toBe("xhigh");
+    expect(resolveReasoningEffortForProvider("claudeAgent", "xhigh")).toBe("xhigh");
     expect(resolveReasoningEffortForProvider("claudeAgent", "ultrathink")).toBe("ultrathink");
   });
 
   it("rejects effort values from the wrong provider", () => {
     expect(resolveReasoningEffortForProvider("codex", "max")).toBeNull();
-    expect(resolveReasoningEffortForProvider("claudeAgent", "xhigh")).toBeNull();
+    expect(resolveReasoningEffortForProvider("claudeAgent", "super")).toBeNull();
   });
 });
 
@@ -291,7 +306,8 @@ describe("normalizeClaudeModelOptions", () => {
 });
 
 describe("supportsClaudeAdaptiveReasoning", () => {
-  it("only enables adaptive reasoning for Opus 4.6 and Sonnet 4.6", () => {
+  it("only enables adaptive reasoning for Opus 4.7, Opus 4.6, and Sonnet 4.6", () => {
+    expect(supportsClaudeAdaptiveReasoning("claude-opus-4-7")).toBe(true);
     expect(supportsClaudeAdaptiveReasoning("claude-opus-4-6")).toBe(true);
     expect(supportsClaudeAdaptiveReasoning("claude-sonnet-4-6")).toBe(true);
     expect(supportsClaudeAdaptiveReasoning("claude-haiku-4-5")).toBe(false);
@@ -300,7 +316,8 @@ describe("supportsClaudeAdaptiveReasoning", () => {
 });
 
 describe("supportsClaudeMaxEffort", () => {
-  it("only enables max effort for Opus 4.6", () => {
+  it("only enables max effort for Opus models", () => {
+    expect(supportsClaudeMaxEffort("claude-opus-4-7")).toBe(true);
     expect(supportsClaudeMaxEffort("claude-opus-4-6")).toBe(true);
     expect(supportsClaudeMaxEffort("claude-sonnet-4-6")).toBe(false);
     expect(supportsClaudeMaxEffort("claude-haiku-4-5")).toBe(false);
@@ -308,8 +325,19 @@ describe("supportsClaudeMaxEffort", () => {
   });
 });
 
+describe("supportsClaudeXHighEffort", () => {
+  it("only enables xhigh effort for Opus 4.7", () => {
+    expect(supportsClaudeXHighEffort("claude-opus-4-7")).toBe(true);
+    expect(supportsClaudeXHighEffort("claude-opus-4-6")).toBe(false);
+    expect(supportsClaudeXHighEffort("claude-sonnet-4-6")).toBe(false);
+    expect(supportsClaudeXHighEffort("claude-haiku-4-5")).toBe(false);
+    expect(supportsClaudeXHighEffort(undefined)).toBe(false);
+  });
+});
+
 describe("supportsClaudeFastMode", () => {
-  it("only enables Claude fast mode for Opus 4.6", () => {
+  it("only enables Claude fast mode for Opus 4.7 and Opus 4.6", () => {
+    expect(supportsClaudeFastMode("claude-opus-4-7")).toBe(true);
     expect(supportsClaudeFastMode("claude-opus-4-6")).toBe(true);
     expect(supportsClaudeFastMode("opus")).toBe(true);
     expect(supportsClaudeFastMode("claude-sonnet-4-6")).toBe(false);
@@ -319,7 +347,8 @@ describe("supportsClaudeFastMode", () => {
 });
 
 describe("supportsClaudeUltrathinkKeyword", () => {
-  it("only enables ultrathink keyword handling for Opus 4.6 and Sonnet 4.6", () => {
+  it("only enables ultrathink keyword handling for Opus 4.7, Opus 4.6, and Sonnet 4.6", () => {
+    expect(supportsClaudeUltrathinkKeyword("claude-opus-4-7")).toBe(true);
     expect(supportsClaudeUltrathinkKeyword("claude-opus-4-6")).toBe(true);
     expect(supportsClaudeUltrathinkKeyword("claude-sonnet-4-6")).toBe(true);
     expect(supportsClaudeUltrathinkKeyword("claude-haiku-4-5")).toBe(false);
@@ -328,6 +357,7 @@ describe("supportsClaudeUltrathinkKeyword", () => {
 
 describe("supportsClaudeThinkingToggle", () => {
   it("only enables the Claude thinking toggle for Haiku 4.5", () => {
+    expect(supportsClaudeThinkingToggle("claude-opus-4-7")).toBe(false);
     expect(supportsClaudeThinkingToggle("claude-opus-4-6")).toBe(false);
     expect(supportsClaudeThinkingToggle("claude-sonnet-4-6")).toBe(false);
     expect(supportsClaudeThinkingToggle("claude-haiku-4-5")).toBe(true);
