@@ -34,6 +34,8 @@ import {
 
 describe("normalizeModelSlug", () => {
   it("maps known aliases to canonical slugs", () => {
+    expect(normalizeModelSlug("5.5")).toBe("gpt-5.5");
+    expect(normalizeModelSlug("gpt-5.5")).toBe("gpt-5.5");
     expect(normalizeModelSlug("5.3")).toBe("gpt-5.3-codex");
     expect(normalizeModelSlug("gpt-5.3")).toBe("gpt-5.3-codex");
   });
@@ -46,6 +48,7 @@ describe("normalizeModelSlug", () => {
   });
 
   it("preserves non-aliased model slugs", () => {
+    expect(normalizeModelSlug("gpt-5.5")).toBe("gpt-5.5");
     expect(normalizeModelSlug("gpt-5.2")).toBe("gpt-5.2");
     expect(normalizeModelSlug("gpt-5.2-codex")).toBe("gpt-5.2-codex");
   });
@@ -100,6 +103,15 @@ describe("resolveModelSlug", () => {
 describe("resolveSelectableModel", () => {
   it("resolves exact slug matches", () => {
     expect(
+      resolveSelectableModel("codex", "gpt-5.5", [
+        { slug: "gpt-5.5", name: "GPT-5.5" },
+        { slug: "gpt-5.4", name: "GPT-5.4" },
+      ]),
+    ).toBe("gpt-5.5");
+  });
+
+  it("resolves legacy codex slug matches", () => {
+    expect(
       resolveSelectableModel("codex", "gpt-5.3-codex", [
         { slug: "gpt-5.4", name: "GPT-5.4" },
         { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
@@ -127,25 +139,25 @@ describe("resolveSelectableModel", () => {
   });
 
   it("returns null for empty input", () => {
-    expect(resolveSelectableModel("codex", "", [{ slug: "gpt-5.4", name: "GPT-5.4" }])).toBeNull();
+    expect(resolveSelectableModel("codex", "", [{ slug: "gpt-5.5", name: "GPT-5.5" }])).toBeNull();
     expect(
-      resolveSelectableModel("codex", "   ", [{ slug: "gpt-5.4", name: "GPT-5.4" }]),
+      resolveSelectableModel("codex", "   ", [{ slug: "gpt-5.5", name: "GPT-5.5" }]),
     ).toBeNull();
     expect(
-      resolveSelectableModel("codex", null, [{ slug: "gpt-5.4", name: "GPT-5.4" }]),
+      resolveSelectableModel("codex", null, [{ slug: "gpt-5.5", name: "GPT-5.5" }]),
     ).toBeNull();
   });
 
   it("returns null for unknown values that are not present in options", () => {
     expect(
-      resolveSelectableModel("codex", "gpt-4.1", [{ slug: "gpt-5.4", name: "GPT-5.4" }]),
+      resolveSelectableModel("codex", "gpt-4.1", [{ slug: "gpt-5.5", name: "GPT-5.5" }]),
     ).toBeNull();
   });
 
   it("does not accept normalized custom-looking slugs unless they exist in options", () => {
     expect(
       resolveSelectableModel("codex", "custom/internal-model", [
-        { slug: "gpt-5.4", name: "GPT-5.4" },
+        { slug: "gpt-5.5", name: "GPT-5.5" },
       ]),
     ).toBeNull();
   });
@@ -204,6 +216,7 @@ describe("getReasoningEffortOptions", () => {
 
 describe("inferProviderForModel", () => {
   it("detects known provider model slugs", () => {
+    expect(inferProviderForModel("gpt-5.5")).toBe("codex");
     expect(inferProviderForModel("gpt-5.3-codex")).toBe("codex");
     expect(inferProviderForModel("claude-sonnet-4-6")).toBe("claudeAgent");
     expect(inferProviderForModel("sonnet")).toBe("claudeAgent");

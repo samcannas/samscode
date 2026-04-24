@@ -44,6 +44,7 @@ describe("getAppModelOptions", () => {
     const options = getAppModelOptions("codex", ["custom/internal-model"]);
 
     expect(options.map((option) => option.slug)).toEqual([
+      "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
       "gpt-5.3-codex",
@@ -84,7 +85,7 @@ describe("resolveAppModelSelection", () => {
   });
 
   it("falls back to the provider default when no model is selected", () => {
-    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "")).toBe("gpt-5.4");
+    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "")).toBe("gpt-5.5");
   });
 
   it("resolves display names through the shared resolver", () => {
@@ -192,14 +193,14 @@ describe("provider-indexed custom model settings", () => {
 
   it("normalizes and deduplicates custom model options per provider", () => {
     const modelOptionsByProvider = getCustomModelOptionsByProvider({
-      customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
+      customCodexModels: ["  custom/codex-model ", "gpt-5.5", "custom/codex-model"],
       customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
     });
 
     expect(
       modelOptionsByProvider.codex.filter((option) => option.slug === "custom/codex-model"),
     ).toHaveLength(1);
-    expect(modelOptionsByProvider.codex.some((option) => option.slug === "gpt-5.4")).toBe(true);
+    expect(modelOptionsByProvider.codex.some((option) => option.slug === "gpt-5.5")).toBe(true);
     expect(
       modelOptionsByProvider.claudeAgent.filter((option) => option.slug === "claude/custom-opus"),
     ).toHaveLength(1);
